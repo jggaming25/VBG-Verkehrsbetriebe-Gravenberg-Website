@@ -6,10 +6,10 @@ window.VBG = window.VBG || {};
 
 Object.assign(window.VBG, {
   emailjs: {
-    publicKey: '',        // EmailJS Public Key (Account)
-    serviceId: '',        // EmailJS Service ID (z. B. "default_service")
-    verifyTemplateId: '', // Template für den Verifizierungs-Code
-    ticketTemplateId: ''  // Template für die Ticket-Benachrichtigung an das Team
+    publicKey: 'svngJ-3wcQIv00tES',
+    serviceId: 'service_be1j40a',
+    verifyTemplateId: 'template_qk1hnlt',
+    ticketTemplateId: 'template_ndghtcm'
   },
   isStaff: function (role) {
     return role === 'inhaber' || role === 'bearbeiter';
