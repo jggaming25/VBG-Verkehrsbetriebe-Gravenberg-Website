@@ -472,6 +472,23 @@ select.input { appearance: none; cursor: pointer; }
 .footer-inner { max-width: 1240px; margin: 0 auto; padding: 26px 22px; display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; align-items: center; }
 .footer-brand b { display: block; margin-bottom: 6px; }
 .footer-note { font-size: 0.8rem; max-width: 480px; }
+.footer-links { display: flex; gap: 18px; }
+.footer-links a { color: var(--text-muted); font-weight: 700; font-size: 0.86rem; text-decoration: none; }
+.footer-links a:hover { color: var(--primary); }
+
+/* ------------------------------ Rechtsseiten (Impressum / Datenschutz) ------------------------------ */
+
+.legal-wrap { max-width: 800px; margin: 0 auto; padding: 34px 22px 70px; }
+.legal-wrap h1 { font-size: 2rem; margin-bottom: 18px; }
+.legal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); padding: 26px; }
+.legal-card h2 { font-size: 1.15rem; margin: 22px 0 8px; }
+.legal-card h2:first-child { margin-top: 0; }
+.legal-card h3 { font-size: 1rem; margin: 16px 0 6px; }
+.legal-card p, .legal-card li { color: var(--text-muted); font-size: 0.92rem; }
+.legal-card ul { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.legal-card strong { color: var(--text); }
+.legal-back { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; font-weight: 800; color: var(--primary); text-decoration: none; }
+.legal-back:hover { text-decoration: underline; }
 
 /* ------------------------------ Responsive ------------------------------ */
 
