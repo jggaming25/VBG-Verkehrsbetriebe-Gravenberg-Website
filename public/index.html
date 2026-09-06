@@ -445,6 +445,27 @@
           <div id="cancel-list" class="chip-list mt"></div>
         </div>
 
+        <div class="card form-card">
+          <h3>🚫 Einzelne Fahrt ausfallen lassen</h3>
+          <p class="muted">Wähle eine Fahrt und setze sie oder einzelne Halte davon aus.</p>
+          <div class="row gap">
+            <select class="input" id="trip-line"></select>
+            <select class="input" id="trip-course" data-forline="trip-line"></select>
+          </div>
+          <div class="row gap mt">
+            <select class="input" id="trip-dir">
+              <option value="hin">Hin (→)</option>
+              <option value="zurück">Zurück (←)</option>
+            </select>
+            <select class="input" id="trip-select" title="Fahrt wählen"></select>
+          </div>
+          <div class="row gap mt">
+            <button class="btn btn-danger btn-full" id="trip-cancel">Fahrt ausfallen lassen</button>
+            <button class="btn btn-ghost btn-full" id="trip-restore" disabled>Wieder aktivieren</button>
+          </div>
+          <div id="trip-stops" class="mt"></div>
+        </div>
+
         <div class="card">
           <h3>🚏 Anschlussanfragen</h3>
           <div id="req-list" class="admin-list"></div>

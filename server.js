@@ -1067,6 +1067,51 @@ app.get('/api/nahverkehr/trips', async (req, res) => {
   res.json({ trips: out });
 });
 
+app.get('/api/nahverkehr/trips/:id', async (req, res) => {
+  const { meta, cancelledTrips, busOf } = await nahCtx();
+  const tripId = Number(req.params.id);
+  const trip = NAH.trips.find((t) => t.id === tripId);
+  if (!trip) return res.status(404).json({ error: 'Fahrt nicht gefunden.' });
+  const stopCancels = await db.all('SELECT stop_id FROM stop_cancellations WHERE trip_id = ?', [tripId]);
+  const cancelledStops = new Set(stopCancels.map((r) => Number(r.stop_id)));
+  res.json({
+    id: trip.id,
+    line: trip.line,
+    course: trip.course,
+    direction: trip.direction,
+    dest: trip.dest,
+    start: fmtTime(trip.stops[0].dep),
+    end: fmtTime(trip.stops[trip.stops.length - 1].arr),
+    bus: busOf[trip.line + '|' + trip.course] || null,
+    cancelled: cancelledTrips.has(trip.id),
+    stops: trip.stops.map((s) => ({
+      seq: s.seq,
+      stopId: s.stopId,
+      stop: s.stopName,
+      arr: fmtTime(s.arr),
+      dep: fmtTime(s.dep),
+      cancelled: cancelledStops.has(s.stopId)
+    }))
+  });
+});
+
+app.post('/api/nahverkehr/trips/:id/cancel', guard(['inhaber']), async (req, res) => {
+  const tripId = Number(req.params.id);
+  const trip = NAH.trips.find((t) => t.id === tripId);
+  if (!trip) return res.status(404).json({ error: 'Fahrt nicht gefunden.' });
+  await db.run('INSERT OR IGNORE INTO trip_cancellations (trip_id) VALUES (?)', [tripId]);
+  res.json({ ok: true });
+  discordLog('🚫 Einzelne Fahrt fällt aus', `Fahrt Linie ${trip.line} Kurs ${trip.course} (${trip.direction}) um ${fmtTime(trip.stops[0].dep)} – von ${req.user.username} ausgesetzt.`);
+});
+
+app.delete('/api/nahverkehr/trips/:id/cancel', guard(['inhaber']), async (req, res) => {
+  const tripId = Number(req.params.id);
+  await db.run('DELETE FROM trip_cancellations WHERE trip_id = ?', [tripId]);
+  res.json({ ok: true });
+  const trip = NAH.trips.find((t) => t.id === tripId);
+  if (trip) discordLog('🚌 Einzelne Fahrt fährt wieder', `Fahrt Linie ${trip.line} Kurs ${trip.course} (${trip.direction}) um ${fmtTime(trip.stops[0].dep)} – von ${req.user.username} reaktiviert.`);
+});
+
 app.get('/api/nahverkehr/active', async (req, res) => {
   const active = await getSetting('active_kurs');
   if (!active) return res.json({ line: null, course: null });
@@ -1130,12 +1175,51 @@ app.delete('/api/nahverkehr/trips/:id/stop-cancel', guard(['inhaber']), async (r
 });
 
 app.get('/api/nahverkehr/cancellations', guard(['inhaber']), async (req, res) => {
-  const rows = await db.all(
-    `SELECT tc.trip_id, t.line, t.course
-     FROM trip_cancellations tc JOIN trips t ON t.id = tc.trip_id
-     GROUP BY t.line, t.course`
+  const tripRows = await db.all(
+    `SELECT tc.trip_id, t.line, t.course FROM trip_cancellations tc JOIN trips t ON t.id = tc.trip_id`
   );
-  res.json({ cancellations: rows });
+  const stopRows = await db.all(
+    `SELECT sc.trip_id, sc.stop_id, t.line, t.course
+     FROM stop_cancellations sc JOIN trips t ON t.id = sc.trip_id
+     ORDER BY sc.trip_id, sc.stop_id`
+  );
+  const kursTotal = {};
+  for (const t of NAH.trips) {
+    const k = t.line + '|' + t.course;
+    kursTotal[k] = (kursTotal[k] || 0) + 1;
+  }
+  const byKurs = {};
+  for (const r of tripRows) {
+    const k = r.line + '|' + r.course;
+    byKurs[k] = (byKurs[k] || []).concat(Number(r.trip_id));
+  }
+  const courses = [];
+  const trips = [];
+  for (const [k, ids] of Object.entries(byKurs)) {
+    const [line, course] = k.split('|');
+    if (ids.length >= kursTotal[k]) {
+      courses.push({ line, course });
+    } else {
+      for (const tid of ids) {
+        const nt = NAH.trips.find((t) => t.id === tid);
+        if (nt) trips.push({ id: tid, line, course, direction: nt.direction, start: fmtTime(nt.stops[0].dep), dest: nt.dest });
+      }
+    }
+  }
+  const stops = stopRows.map((r) => {
+    const nt = NAH.trips.find((t) => t.id === Number(r.trip_id));
+    const s = nt && nt.stops.find((x) => x.stopId === Number(r.stop_id));
+    return {
+      tripId: Number(r.trip_id),
+      stopId: Number(r.stop_id),
+      line: r.line,
+      course: r.course,
+      direction: nt ? nt.direction : '',
+      start: nt && nt.stops.length ? fmtTime(nt.stops[0].dep) : '',
+      stop: s ? s.stopName : '?'
+    };
+  });
+  res.json({ cancellations: { courses, trips, stops } });
 });
 
 /* Verbindungssuche */

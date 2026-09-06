@@ -41,10 +41,13 @@ VBG.admin = (function () {
         nvCourseOptions(document.getElementById('act-course'));
       }
       nvCourseOptions(document.getElementById('cancel-course'));
+      nvLineOptions(document.getElementById('trip-line'));
+      nvCourseOptions(document.getElementById('trip-course'));
       renderActive();
-      renderCancels(cancels.cancellations || []);
+      renderCancels(cancels.cancellations || null);
       renderRequests(reqs.requests || []);
       renderConns(conns.connections || []);
+      loadTrips();
     } catch (e) {
       toast('Nahverkehr-Steuerung: ' + e.message, 'err');
     }
@@ -83,15 +86,18 @@ VBG.admin = (function () {
 
   function renderCancels(list) {
     const wrap = document.getElementById('cancel-list');
-    const map = {};
-    for (const c of list) map[c.line + '|' + c.course] = (map[c.line + '|' + c.course] || 0) + 1;
-    const keys = Object.keys(map);
-    wrap.innerHTML = keys.length
-      ? keys.map((k) => {
-        const [line, course] = k.split('|');
-        return `<span class="chip chip-cancel">🚫 L${line} Kurs ${course}</span>`;
-      }).join('')
-      : '<p class="muted">Keine Ausfälle.</p>';
+    list = list || { courses: [], trips: [], stops: [] };
+    const html = [];
+    if (list.courses && list.courses.length) {
+      html.push(`<div class="cancel-group"><div class="report-meta">Ganze Kurse</div>${list.courses.map((c) => `<span class="chip chip-cancel" data-uncancelcourse="${esc(c.line + '|' + c.course)}" title="Wieder aktivieren">🚫 L${esc(c.line)} Kurs ${esc(c.course)} · ✕</span>`).join('')}</div>`);
+    }
+    if (list.trips && list.trips.length) {
+      html.push(`<div class="cancel-group"><div class="report-meta">Einzelne Fahrten</div>${list.trips.map((t) => `<span class="chip chip-cancel" data-uncanceltrip="${t.id}" title="Wieder aktivieren">🚫 L${esc(t.line)} Kurs ${esc(t.course)} ${esc(t.direction)} ${esc(t.start)} · ✕</span>`).join('')}</div>`);
+    }
+    if (list.stops && list.stops.length) {
+      html.push(`<div class="cancel-group"><div class="report-meta">Haltestellen-Ausfälle</div>${list.stops.map((s) => `<span class="chip chip-cancel" data-uncancelstop="${esc(s.tripId + '|' + s.stopId)}" title="Wieder aktivieren">🚫 ${esc(s.stop)} · L${esc(s.line)} Kurs ${esc(s.course)} ${esc(s.direction)} ${esc(s.start)} · ✕</span>`).join('')}</div>`);
+    }
+    wrap.innerHTML = html.length ? html.join('') : '<p class="muted">Keine Ausfälle.</p>';
   }
 
   async function cancelKurs() {
@@ -113,6 +119,112 @@ VBG.admin = (function () {
     try {
       await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
       toast('Kurs wieder aktiv.', 'ok');
+      loadSteuerung();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function restoreCourseByKey(key) {
+    const [line, course] = key.split('|');
+    try {
+      await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
+      toast('Kurs wieder aktiv.', 'ok');
+      loadSteuerung();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  /* ------------------------------ Einzelne Fahrten / Halte ------------------------------ */
+
+  async function loadTrips() {
+    const line = document.getElementById('trip-line').value;
+    const course = document.getElementById('trip-course').value;
+    const dir = document.getElementById('trip-dir').value;
+    const sel = document.getElementById('trip-select');
+    if (!line || !course || !dir) { sel.innerHTML = ''; await loadTripDetail(null); return; }
+    try {
+      const data = await API.get(`/api/nahverkehr/trips?line=${encodeURIComponent(line)}&course=${course}&direction=${encodeURIComponent(dir)}`);
+      const trips = data.trips || [];
+      sel.innerHTML = trips.map((t) => `<option value="${t.id}">${esc(t.start)} ${t.direction === 'hin' ? '→' : '←'} ${esc(t.dest)}${t.cancelled ? ' · 🚫 ausgefallen' : ''}</option>`).join('');
+      await loadTripDetail(sel.value || null);
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function loadTripDetail(id) {
+    const info = document.getElementById('trip-stops');
+    if (!id) {
+      document.getElementById('trip-cancel').disabled = true;
+      document.getElementById('trip-restore').disabled = true;
+      info.innerHTML = '<p class="muted">Keine Fahrt gewählt.</p>';
+      return;
+    }
+    try {
+      const t = await API.get('/api/nahverkehr/trips/' + id);
+      document.getElementById('trip-cancel').disabled = t.cancelled;
+      document.getElementById('trip-restore').disabled = !t.cancelled;
+      info.innerHTML = t.stops.length
+        ? `<div class="trip-meta">${t.stops.length} Halte · Bus: ${esc(t.bus || 'Solo')}</div>
+           <div class="stop-list">${t.stops.map((s) => `
+             <div class="stop-item${s.cancelled ? ' cancelled' : ''}">
+               <div class="stop-no">${s.seq + 1}</div>
+               <div class="stop-main"><b>${esc(s.stop)}</b><div class="report-meta">an ${esc(s.arr)} · ab ${esc(s.dep)}</div></div>
+               <button class="btn btn-sm ${s.cancelled ? 'btn-ghost' : 'btn-danger'}" data-stopid="${s.stopId}" data-cancelled="${s.cancelled ? '1' : '0'}">${s.cancelled ? '✅ Teil wieder' : '🚫 Halt ausfallen'}</button>
+             </div>`).join('')}</div>`
+        : '<p class="muted">Keine Haltestellen-Daten.</p>';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function cancelTrip() {
+    const id = document.getElementById('trip-select').value;
+    if (!id) return;
+    if (!confirm('Diese einzelne Fahrt wirklich ausfallen lassen?')) return;
+    try {
+      await API.post('/api/nahverkehr/trips/' + id + '/cancel');
+      toast('Einzelne Fahrt ausgesetzt.', 'ok');
+      loadSteuerung();
+      loadTrips();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function restoreTrip() {
+    const id = document.getElementById('trip-select').value;
+    if (!id) return;
+    try {
+      await API.del('/api/nahverkehr/trips/' + id + '/cancel');
+      toast('Einzelne Fahrt wieder aktiv.', 'ok');
+      loadSteuerung();
+      loadTrips();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function restoreTripById(id) {
+    try {
+      await API.del('/api/nahverkehr/trips/' + id + '/cancel');
+      toast('Fahrt wieder aktiv.', 'ok');
+      loadSteuerung();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function toggleStop(btn) {
+    const tripId = document.getElementById('trip-select').value;
+    if (!tripId) return;
+    const stopId = Number(btn.dataset.stopid);
+    const cancelled = btn.dataset.cancelled === '1';
+    try {
+      if (cancelled) {
+        await API.del(`/api/nahverkehr/trips/${tripId}/stop-cancel?stopId=${stopId}`);
+        toast('Halt wird wieder bedient.', 'ok');
+      } else {
+        await API.post(`/api/nahverkehr/trips/${tripId}/stop-cancel`, { stopId });
+        toast('Halt ausgesetzt.', 'ok');
+      }
+      loadSteuerung();
+      loadTripDetail(tripId);
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function restoreStop(tripId, stopId) {
+    try {
+      await API.del(`/api/nahverkehr/trips/${tripId}/stop-cancel?stopId=${stopId}`);
+      toast('Halt wieder bedient.', 'ok');
       loadSteuerung();
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -305,6 +417,24 @@ VBG.admin = (function () {
     document.getElementById('act-clear').addEventListener('click', clearActive);
     document.getElementById('cancel-set').addEventListener('click', cancelKurs);
     document.getElementById('cancel-restore').addEventListener('click', restoreKurs);
+    document.getElementById('trip-line').addEventListener('change', () => { nvCourseOptions(document.getElementById('trip-course')); loadTrips(); });
+    document.getElementById('trip-course').addEventListener('change', loadTrips);
+    document.getElementById('trip-dir').addEventListener('change', loadTrips);
+    document.getElementById('trip-select').addEventListener('change', (e) => loadTripDetail(e.target.value));
+    document.getElementById('trip-cancel').addEventListener('click', cancelTrip);
+    document.getElementById('trip-restore').addEventListener('click', restoreTrip);
+    document.getElementById('trip-stops').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-stopid]');
+      if (b) toggleStop(b);
+    });
+    document.getElementById('cancel-list').addEventListener('click', (e) => {
+      const c = e.target.closest('[data-uncancelcourse]');
+      if (c) { restoreCourseByKey(c.dataset.uncancelcourse); return; }
+      const t = e.target.closest('[data-uncanceltrip]');
+      if (t) { restoreTripById(Number(t.dataset.uncanceltrip)); return; }
+      const s = e.target.closest('[data-uncancelstop]');
+      if (s) { const p = s.dataset.uncancelstop.split('|'); restoreStop(Number(p[0]), Number(p[1])); }
+    });
     document.getElementById('req-list').addEventListener('click', (e) => {
       const a = e.target.closest('[data-acc]');
       if (a) { acceptRequest(a.dataset.acc); return; }

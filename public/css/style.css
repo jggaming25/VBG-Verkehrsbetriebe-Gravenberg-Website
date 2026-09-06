@@ -632,7 +632,15 @@ select.input { appearance: none; cursor: pointer; }
 
 .steer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .chip-list { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip-cancel { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.chip-cancel { background: var(--danger-soft); color: var(--danger); border-color: transparent; cursor: pointer; }
+.cancel-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+
+.trip-meta { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.stop-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.stop-item { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 8px 10px; }
+.stop-item .stop-no { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--surface-hover); font-size: 12px; font-weight: 700; }
+.stop-item .stop-main { flex: 1; min-width: 0; }
+.stop-item.cancelled { opacity: 0.55; background: var(--danger-soft); }
 
 .modal-ask .modal-card { max-width: 420px; }
 .line-pick { flex-wrap: wrap; }
