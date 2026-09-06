@@ -17,6 +17,9 @@ Object.assign(window.VBG, {
   isOwner: function (role) {
     return role === 'inhaber';
   },
+  prioForCategory: function (cat) {
+    return { frage: 'normal', problem: 'hoch', vorschlag: 'niedrig', bewerbung: 'normal', sonstiges: 'normal' }[cat] || 'normal';
+  },
   categories: ['frage', 'problem', 'vorschlag', 'bewerbung', 'sonstiges'],
   discordRoles: {
     '1544008757447757965': 'Trainee Busfahrer',
@@ -26,7 +29,8 @@ Object.assign(window.VBG, {
     '1544007001489809579': 'Trainee Notfallmanager',
     '1544006432892911616': 'Notfallmanager',
     '1544009575550947418': 'Trainee Kundenservice',
-    '1544008876020596786': 'Kundenservice'
+    '1544008876020596786': 'Kundenservice',
+    'web_developer': 'Web Developer'
   },
   labels: {
     categories: { frage: 'Frage', problem: 'Problem / Bug', vorschlag: 'Vorschlag', bewerbung: 'Bewerbung', sonstiges: 'Sonstiges' },

@@ -216,18 +216,8 @@
         <div class="notice-item">
           <span class="notice-icon">⚠️</span>
           <span class="notice-text">${esc(n.text)}</span>
-          ${VBG.isOwner(state.user && state.user.role) ? `<button class="notice-del icon-btn" data-delnotice="${n.id}" title="Meldung löschen">✕</button>` : ''}
         </div>`).join('');
       wrap.classList.remove('hidden');
-      wrap.querySelectorAll('[data-delnotice]').forEach((b) => {
-        b.addEventListener('click', async () => {
-          try {
-            await API.del('/api/notices/' + b.dataset.delnotice);
-            toast('Meldung gelöscht.', 'ok');
-            loadNotices();
-          } catch (err) { toast(err.message, 'err'); }
-        });
-      });
     } catch (e) {
       wrap.classList.add('hidden');
     }
@@ -371,7 +361,7 @@
       el.addEventListener('click', () => { if (el.id !== 'nav-tickets') showTab(el.dataset.tab); });
     });
 
-    // Tickets-Dropdown (Klick + Hover)
+    // Tickets-Dropdown (stabil per Klick, kein Hover-Schließen)
     const ddWrap = $('nav-tickets-wrap');
     const ddMenu = $('tickets-dropdown');
     function ddOpen() {
@@ -384,17 +374,16 @@
       ddMenu.classList.remove('hidden');
     }
     function ddClose() { ddMenu.classList.add('hidden'); }
-    ddWrap.addEventListener('mouseenter', ddOpen);
-    ddWrap.addEventListener('mouseleave', ddClose);
     $('nav-tickets').addEventListener('click', (e) => {
       e.stopPropagation();
-      const willOpen = ddMenu.classList.contains('hidden');
-      if (willOpen) { showTab('tickets'); ddOpen(); }
-      else { ddClose(); }
+      showTab('tickets');
+      if (ddMenu.classList.contains('hidden')) ddOpen();
+      else ddClose();
     });
     $('dd-tickets-dashboard').addEventListener('click', () => { ddClose(); openTickets('dashboard'); });
     $('dd-tickets-create').addEventListener('click', () => { ddClose(); openTickets('create'); });
     document.addEventListener('click', (e) => { if (!e.target.closest('#nav-tickets-wrap')) ddClose(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ddClose(); });
 
     // Theme
     $('theme-toggle').addEventListener('click', toggleTheme);

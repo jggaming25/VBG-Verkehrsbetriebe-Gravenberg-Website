@@ -34,6 +34,7 @@ async function init() {
       password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'besucher',
       verified INTEGER NOT NULL DEFAULT 0,
+      blocked INTEGER NOT NULL DEFAULT 0,
       verify_code TEXT,
       discord_id TEXT UNIQUE,
       avatar TEXT,
@@ -56,6 +57,7 @@ async function init() {
       time_start TEXT NOT NULL,
       time_end TEXT,
       image TEXT NOT NULL,
+      host_id INTEGER REFERENCES users(id),
       created_by INTEGER NOT NULL REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))
     )
@@ -95,12 +97,88 @@ async function init() {
     )
   `);
 
+  /* ------------------------------ Nahverkehr (Fahrplan) ------------------------------ */
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS stops (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS trips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      line TEXT NOT NULL,
+      course INTEGER NOT NULL,
+      direction TEXT NOT NULL,
+      seed_key TEXT UNIQUE
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS trip_stops (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL,
+      stop_id INTEGER NOT NULL REFERENCES stops(id),
+      arr_min INTEGER,
+      dep_min INTEGER
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS trip_cancellations (
+      trip_id INTEGER PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS stop_cancellations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      stop_id INTEGER NOT NULL REFERENCES stops(id),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(trip_id, stop_id)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_a_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      trip_b_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      stop_id INTEGER NOT NULL REFERENCES stops(id),
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(trip_a_id, trip_b_id, stop_id)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS connection_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      to_trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      stop_id INTEGER NOT NULL REFERENCES stops(id),
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL DEFAULT 'offen',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Migrationen für ältere Schemas
   if (await hasColumn('users', 'password_hash') && !await hasColumn('users', 'discord_id')) {
     await client.execute(`ALTER TABLE users ADD COLUMN discord_id TEXT UNIQUE`);
   }
   if (!(await hasColumn('users', 'avatar'))) {
     await client.execute(`ALTER TABLE users ADD COLUMN avatar TEXT`);
+  }
+  if (!(await hasColumn('users', 'blocked'))) {
+    await client.execute(`ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!(await hasColumn('shifts', 'host_id'))) {
+    await client.execute(`ALTER TABLE shifts ADD COLUMN host_id INTEGER REFERENCES users(id)`);
   }
   if (!(await hasColumn('users', 'discord_roles'))) {
     await client.execute(`ALTER TABLE users ADD COLUMN discord_roles TEXT`);

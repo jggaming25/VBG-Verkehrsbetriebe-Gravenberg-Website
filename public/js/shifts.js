@@ -21,7 +21,7 @@ VBG.shifts = (function () {
         <div class="shift-time">${clockIcon()} <span>${esc(time)} Uhr</span></div>
         ${s.description ? `<p class="shift-desc">${esc(s.description)}</p>` : ''}
         <div class="shift-footer">
-          <span>Angesetzt von ${esc(s.created_by)}</span>
+          <span>${s.host_name ? `🎤 Shifthost: ${esc(s.host_name)} · ` : ''}Angesetzt von ${esc(s.created_by)}</span>
           ${VBG.state && VBG.state.user && VBG.state.user.role === 'inhaber'
             ? `<button class="btn btn-danger btn-sm" data-del-shift="${s.id}">Löschen</button>` : ''}
         </div>
@@ -55,15 +55,31 @@ VBG.shifts = (function () {
     wrap.innerHTML = list.map(shiftCard).join('');
   }
 
-  function showCreate() {
-    uploadImage = null;
-    selectedGallery = '/IMGs/Bild1.png';
-    document.getElementById('shift-title').value = '';
-    document.getElementById('shift-date').value = new Date().toISOString().slice(0, 10);
-    document.getElementById('shift-time-start').value = '14:00';
-    document.getElementById('shift-time-end').value = '18:00';
-    document.getElementById('shift-desc').value = '';
-    document.getElementById('shift-file-input').value = '';
+async function loadHosts() {
+  const sel = document.getElementById('shift-host');
+  sel.innerHTML = '<option value="">— Ohne Shifthost —</option>';
+  try {
+    const data = await API.get('/api/users');
+    const hosts = (data.users || []).filter((u) => u.role === 'inhaber');
+    for (const h of hosts) {
+      const opt = document.createElement('option');
+      opt.value = h.id;
+      opt.textContent = (h.verified ? '✓ ' : '') + h.username;
+      sel.appendChild(opt);
+    }
+  } catch (e) { /* Shifthost-Auswahl ist optional */ }
+}
+
+function showCreate() {
+  uploadImage = null;
+  selectedGallery = '/IMGs/Bild1.png';
+  document.getElementById('shift-title').value = '';
+  document.getElementById('shift-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('shift-time-start').value = '14:00';
+  document.getElementById('shift-time-end').value = '18:00';
+  document.getElementById('shift-desc').value = '';
+  loadHosts();
+  document.getElementById('shift-file-input').value = '';
     setGalleryMode('gallery');
     const prev = document.getElementById('shift-upload-preview');
     prev.src = '';
@@ -132,7 +148,8 @@ VBG.shifts = (function () {
       time_start: document.getElementById('shift-time-start').value,
       time_end: document.getElementById('shift-time-end').value || null,
       description: document.getElementById('shift-desc').value.trim(),
-      image: uploadImage || selectedGallery
+      image: uploadImage || selectedGallery,
+      host_id: Number(document.getElementById('shift-host').value) || null
     };
     if (!uploadImage && !document.querySelector('#imgmode-gallery .img-opt.selected')) {
       toast('Bitte wähle ein Bild aus der Galerie oder lade eins hoch.', 'err');

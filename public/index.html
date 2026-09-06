@@ -170,6 +170,12 @@
             </label>
           </div>
           <label class="field">
+            <span>Shifthost</span>
+            <select class="input" id="shift-host">
+              <option value="">— Ohne Shifthost —</option>
+            </select>
+          </label>
+          <label class="field">
             <span>Beschreibung</span>
             <textarea class="input" id="shift-desc" rows="3" placeholder="Infos zu Route, Ablauf, Besonderheiten …"></textarea>
           </label>
@@ -302,14 +308,7 @@
                 <option value="bewerbung">📝 Bewerbung</option>
                 <option value="sonstiges">📦 Sonstiges</option>
               </select>
-            </label>
-            <label class="field">
-              <span>Priorität</span>
-              <select class="input" id="ticket-priority">
-                <option value="niedrig">Niedrig</option>
-                <option value="normal" selected>Normal</option>
-                <option value="hoch">Hoch</option>
-              </select>
+              <small class="muted field-hint" id="ticket-prio-hint">Priorität: Normal (automatisch)</small>
             </label>
           </div>
           <label class="field">
@@ -386,7 +385,7 @@
       <input class="input input-search" id="user-search" type="search" placeholder="Spieler suchen …"/>
       <div class="table-wrap">
         <table class="users-table">
-          <thead><tr><th>Spieler</th><th>E-Mail</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Spieler</th><th>E-Mail</th><th>Rolle</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody id="users-tbody"></tbody>
         </table>
       </div>
@@ -466,14 +465,7 @@
             <option value="bewerbung">📝 Bewerbung</option>
             <option value="sonstiges">📦 Sonstiges</option>
           </select>
-        </label>
-        <label class="field">
-          <span>Priorität</span>
-          <select class="input" id="edit-ticket-priority">
-            <option value="niedrig">Niedrig</option>
-            <option value="normal">Normal</option>
-            <option value="hoch">Hoch</option>
-          </select>
+          <small class="muted field-hint" id="edit-ticket-prio-hint">Priorität: Normal (automatisch)</small>
         </label>
         <label class="field">
           <span>Fällig bis</span>

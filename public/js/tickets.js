@@ -18,6 +18,11 @@ VBG.tickets = (function () {
     return `<span class="badge badge-status-${esc(status)}">${esc(VBG.labels.status[status] || status)}</span>`;
   }
 
+  function updatePrioHint(selectEl, hintEl) {
+    const p = VBG.prioForCategory(selectEl.value);
+    hintEl.textContent = 'Priorität: ' + (VBG.labels.priorities[p] || p) + ' (automatisch)';
+  }
+
   function prioBadge(p) {
     return `<span class="badge badge-p-${esc(p)}">${esc(VBG.labels.priorities[p] || p)}</span>`;
   }
@@ -292,8 +297,9 @@ VBG.tickets = (function () {
   function openEditModal() {
     if (!currentTicket) return;
     document.getElementById('edit-ticket-subject').value = currentTicket.subject || '';
-    document.getElementById('edit-ticket-category').value = currentTicket.category || 'frage';
-    document.getElementById('edit-ticket-priority').value = currentTicket.priority || 'normal';
+    const catSel = document.getElementById('edit-ticket-category');
+    catSel.value = currentTicket.category || 'frage';
+    updatePrioHint(catSel, document.getElementById('edit-ticket-prio-hint'));
     document.getElementById('edit-ticket-due').value = currentTicket.due_date || '';
     document.getElementById('edit-ticket-desc').value = currentTicket.description || '';
     openModal('modal-edit-ticket');
@@ -304,7 +310,6 @@ VBG.tickets = (function () {
     const body = {
       subject: document.getElementById('edit-ticket-subject').value.trim(),
       category: document.getElementById('edit-ticket-category').value,
-      priority: document.getElementById('edit-ticket-priority').value,
       description: document.getElementById('edit-ticket-desc').value.trim(),
       due_date: document.getElementById('edit-ticket-due').value || null
     };
@@ -353,8 +358,9 @@ VBG.tickets = (function () {
 
   function resetNewForm() {
     document.getElementById('ticket-subject').value = '';
-    document.getElementById('ticket-category').value = 'frage';
-    document.getElementById('ticket-priority').value = 'normal';
+    const catSel = document.getElementById('ticket-category');
+    catSel.value = 'frage';
+    updatePrioHint(catSel, document.getElementById('ticket-prio-hint'));
     document.getElementById('ticket-desc').value = '';
   }
 
@@ -362,14 +368,14 @@ VBG.tickets = (function () {
     e.preventDefault();
     const subject = document.getElementById('ticket-subject').value.trim();
     const category = document.getElementById('ticket-category').value;
-    const priority = document.getElementById('ticket-priority').value;
     const description = document.getElementById('ticket-desc').value.trim();
     if (!subject) { toast('Bitte ein Thema angeben.', 'err'); return; }
     const btn = document.getElementById('ticket-form').querySelector('button[type="submit"]');
     btn.disabled = true;
     try {
-      const data = await API.post('/api/tickets', { subject, category, description, priority });
+      const data = await API.post('/api/tickets', { subject, category, description });
       toast('Ticket erstellt! Unser Team kümmert sich.', 'ok');
+      const priority = data.priority || VBG.prioForCategory(category);
       resetNewForm();
       await VBG.notifyNewTicket(subject, data.id, priority);
       openTicketFlow(data.id);
@@ -427,6 +433,8 @@ VBG.tickets = (function () {
     });
     document.getElementById('ticket-form').addEventListener('submit', submitNew);
     document.getElementById('ticket-edit-form').addEventListener('submit', submitEdit);
+    document.getElementById('ticket-category').addEventListener('change', (e) => updatePrioHint(e.target, document.getElementById('ticket-prio-hint')));
+    document.getElementById('edit-ticket-category').addEventListener('change', (e) => updatePrioHint(e.target, document.getElementById('edit-ticket-prio-hint')));
     document.getElementById('chat-send').addEventListener('click', sendMessage);
     document.getElementById('chat-text').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }

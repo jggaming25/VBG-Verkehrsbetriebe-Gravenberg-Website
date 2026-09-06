@@ -33,6 +33,9 @@ const OWNER_EMAILS = (process.env.OWNER_EMAILS || 'janngenzmann@gmail.com,platzh
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
+const WEB_DEV_EMAIL = 'janngenzmann@gmail.com';
+const WEB_DEV_ROLE = 'web_developer';
+
 const SESSION_COOKIE = 'vbg_session';
 const OAUTH_STATE_COOKIE = 'vbg_oauth_state';
 const SESSION_TTL_DAYS = 30;
@@ -114,6 +117,10 @@ function publicUser(u) {
   if (u.discord_roles) {
     try { discordRoles = JSON.parse(u.discord_roles); } catch (e) { discordRoles = []; }
   }
+  // Virtuelle, nicht verlinkte Discord-Rolle für den Webentwickler.
+  if (String(u.email || '').toLowerCase() === WEB_DEV_EMAIL && !discordRoles.includes(WEB_DEV_ROLE)) {
+    discordRoles.push(WEB_DEV_ROLE);
+  }
   return {
     id: u.id,
     email: u.email,
@@ -130,13 +137,14 @@ async function currentUser(req) {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
   const rows = await db.all(
-    `SELECT u.id, u.email, u.username, u.role, u.verified, u.verify_code, u.created_at, u.avatar, u.discord_roles
+    `SELECT u.id, u.email, u.username, u.role, u.verified, u.blocked, u.verify_code, u.created_at, u.avatar, u.discord_roles
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ?`,
     [sha256(token)]
   );
   const u = rows[0];
   if (!u) return null;
+  if (u.blocked) return null;
   return publicUser(u);
 }
 
@@ -201,6 +209,7 @@ app.post('/api/login', async (req, res) => {
     if (!user || !user.password_hash || !(await bcrypt.compare(String(password || ''), user.password_hash))) {
       return res.status(401).json({ error: 'E-Mail oder Passwort falsch.' });
     }
+    if (user.blocked) return res.status(403).json({ error: 'Konto wurde gesperrt.' });
     const token = await startSession(user.id);
     setSessionCookie(res, token);
     res.json({ ok: true, user: publicUser(user) });
@@ -340,6 +349,9 @@ app.get('/api/auth/discord/callback', async (req, res) => {
       }
     }
 
+    if (user && user.blocked) {
+      return res.redirect('/?auth_error=' + encodeURIComponent('Konto wurde gesperrt.'));
+    }
     const token = await startSession(user.id);
     setSessionCookie(res, token);
     res.redirect('/');
@@ -355,7 +367,7 @@ app.get('/api/auth/discord/callback', async (req, res) => {
 
 app.get('/api/users', guard(['inhaber', 'bearbeiter']), async (req, res) => {
   const users = await db.all(
-    `SELECT id, email, username, role, verified, created_at, avatar FROM users
+    `SELECT id, email, username, role, verified, blocked, created_at, avatar FROM users
      ORDER BY CASE role WHEN 'inhaber' THEN 0 WHEN 'bearbeiter' THEN 1 ELSE 2 END, username COLLATE NOCASE`
   );
   res.json({ users });
@@ -367,6 +379,9 @@ app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Ungültige Rolle.' });
   const target = await db.get('SELECT id, email, role FROM users WHERE id = ?', [id]);
   if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden.' });
+  if (target.role === 'inhaber' && id !== req.user.id) {
+    return res.status(400).json({ error: 'Inhaber können einander keine Rollen verändern.' });
+  }
   const targetIsOwnerEmail = OWNER_EMAILS.includes(String(target.email).toLowerCase());
   if (targetIsOwnerEmail && role !== 'inhaber') {
     return res.status(400).json({ error: 'Die festen Inhaber-E-Mails können nicht herabgestuft werden.' });
@@ -379,6 +394,48 @@ app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
   discordLog('🛡️ Rollenänderung', `**${target.email}** wurde von **${target.role}** auf **${role}** geändert (${req.user.username}).`);
 });
 
+// Inhaber können einander nicht sperren; feste Inhaber-Konten sind komplett geschützt.
+async function guardAccountAction(req, res, target) {
+  if (!target) { res.status(404).json({ error: 'Nutzer nicht gefunden.' }); return true; }
+  const isOwnerAccount = OWNER_EMAILS.includes(String(target.email).toLowerCase());
+  if (target.role === 'inhaber' && target.id !== req.user.id) {
+    res.status(400).json({ error: 'Inhaber können einander keine Konten sperren oder löschen.' });
+    return true;
+  }
+  if (isOwnerAccount) {
+    res.status(400).json({ error: 'Feste Inhaber-Konten können nicht gesperrt oder gelöscht werden.' });
+    return true;
+  }
+  return false;
+}
+
+app.put('/api/users/:id/block', guard(['inhaber']), async (req, res) => {
+  const id = Number(req.params.id);
+  const target = await db.get('SELECT id, email, role FROM users WHERE id = ?', [id]);
+  if (await guardAccountAction(req, res, target)) return;
+  const blocked = (req.body || {}).blocked ? 1 : 0;
+  await db.run('UPDATE users SET blocked = ? WHERE id = ?', [blocked, id]);
+  if (blocked) await db.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+  res.json({ ok: true, blocked });
+  discordLog(blocked ? '⛔ Konto gesperrt' : '✅ Konto entsperrt', `**${target.email}** wurde ${blocked ? 'gesperrt' : 'entsperrt'} (${req.user.username}).`);
+});
+
+app.delete('/api/users/:id', guard(['inhaber']), async (req, res) => {
+  const id = Number(req.params.id);
+  const target = await db.get('SELECT id, email, role FROM users WHERE id = ?', [id]);
+  if (await guardAccountAction(req, res, target)) return;
+  await db.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+  await db.run('DELETE FROM ticket_messages WHERE user_id = ?', [id]);
+  await db.run('DELETE FROM tickets WHERE user_id = ?', [id]);
+  await db.run('DELETE FROM notices WHERE created_by = ?', [id]);
+  await db.run('DELETE FROM shifts WHERE created_by = ?', [id]);
+  await db.run('DELETE FROM connection_requests WHERE user_id = ?', [id]);
+  await db.run('UPDATE connections SET created_by = NULL WHERE created_by = ?', [id]);
+  await db.run('DELETE FROM users WHERE id = ?', [id]);
+  res.json({ ok: true });
+  discordLog('🗑️ Konto gelöscht', `**${target.email}** wurde gelöscht (${req.user.username}).`);
+});
+
 app.get('/api/staff-emails', guard(), async (req, res) => {
   const rows = await db.all(`SELECT email FROM users WHERE role IN ('inhaber','bearbeiter') AND verified = 1`);
   res.json({ emails: rows.map((r) => r.email) });
@@ -388,26 +445,34 @@ app.get('/api/staff-emails', guard(), async (req, res) => {
 
 app.get('/api/shifts', async (req, res) => {
   const shifts = await db.all(
-    `SELECT s.*, u.username AS created_by FROM shifts s
+    `SELECT s.*, u.username AS created_by, h.username AS host_name, h.avatar AS host_avatar
+     FROM shifts s
      JOIN users u ON u.id = s.created_by
+     LEFT JOIN users h ON h.id = s.host_id
      ORDER BY s.date ASC, s.time_start ASC`
   );
   res.json({ shifts });
 });
 
 app.post('/api/shifts', guard(['inhaber']), async (req, res) => {
-  const { title, description, date, time_start, time_end, image } = req.body || {};
+  const { title, description, date, time_start, time_end, image, host_id } = req.body || {};
   if (!title || !date || !time_start || !image) {
     return res.status(400).json({ error: 'Titel, Datum, Startzeit und Bild sind Pflicht.' });
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Ungültiges Datum.' });
+  let hostId = host_id ? Number(host_id) : null;
+  if (hostId) {
+    const host = await db.get('SELECT id, role, username FROM users WHERE id = ?', [hostId]);
+    if (!host || host.role !== 'inhaber') return res.status(400).json({ error: 'Der Shifthost muss ein Inhaber sein.' });
+  }
   const r = await db.run(
-    `INSERT INTO shifts (title, description, date, time_start, time_end, image, created_by)
-     VALUES (?,?,?,?,?,?,?)`,
-    [String(title).trim(), String(description || '').trim(), date, time_start, time_end || null, image, req.user.id]
+    `INSERT INTO shifts (title, description, date, time_start, time_end, image, host_id, created_by)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [String(title).trim(), String(description || '').trim(), date, time_start, time_end || null, image, hostId, req.user.id]
   );
   res.json({ ok: true, id: Number(r.lastRowId) });
-  discordLog('🚍 Neue Schicht', `**${String(title).trim()}** am ${date} (${time_start}${time_end ? '–' + time_end : ''}) von ${req.user.username}`);
+  const hostName = hostId ? (await db.get('SELECT username FROM users WHERE id = ?', [hostId])).username : null;
+  discordLog('🚍 Neue Schicht', `**${String(title).trim()}** am ${date} (${time_start}${time_end ? '–' + time_end : ''}) von ${req.user.username}${hostName ? '\n🎤 Shifthost: ' + hostName : ''}`);
 });
 
 app.delete('/api/shifts/:id', guard(['inhaber']), async (req, res) => {
@@ -467,6 +532,10 @@ const isStaff = (u) => u && ['inhaber', 'bearbeiter'].includes(u.role);
 
 const vbgTicketNr = (id) => 'VBG-' + String(id).padStart(4, '0');
 
+// Die Priorität wird automatisch je Kategorie vergeben und ist danach unveränderbar.
+const PRIORITY_FOR_CATEGORY = { frage: 'normal', problem: 'hoch', vorschlag: 'niedrig', bewerbung: 'normal', sonstiges: 'normal' };
+const priorityForCategory = (category) => PRIORITY_FOR_CATEGORY[String(category).toLowerCase()] || 'normal';
+
 app.get('/api/tickets', guard(), async (req, res) => {
   const staff = isStaff(req.user);
   const sql = `
@@ -486,19 +555,24 @@ app.get('/api/tickets', guard(), async (req, res) => {
 });
 
 app.post('/api/tickets', guard(), async (req, res) => {
-  const { subject, category, description, priority } = req.body || {};
+  const { subject, category, description } = req.body || {};
   if (!subject || !category) return res.status(400).json({ error: 'Thema und Kategorie sind Pflicht.' });
+  if (!['frage', 'problem', 'vorschlag', 'bewerbung', 'sonstiges'].includes(category)) {
+    return res.status(400).json({ error: 'Ungültige Kategorie.' });
+  }
+  // Die Priorität wird automatisch aus der Kategorie vergeben und kann nicht gewählt werden.
+  const priority = priorityForCategory(category);
   const r = await db.run(
     `INSERT INTO tickets (subject, category, description, priority, user_id, status) VALUES (?,?,?,?,?,'offen')`,
-    [String(subject).trim(), category, String(description || '').trim(), priority || 'normal', req.user.id]
+    [String(subject).trim(), category, String(description || '').trim(), priority, req.user.id]
   );
   const newId = Number(r.lastRowId);
   await db.run(
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [newId, req.user.id, `Ticket ${vbgTicketNr(newId)} wurde erstellt von ${req.user.username}.`]
   );
-  res.json({ ok: true, id: Number(r.lastRowId) });
-  discordLog('🎫 Neues Ticket', `**${vbgTicketNr(newId)}** – ${String(subject).trim()} (${category}, ${priority || 'normal'}) von ${req.user.username}`);
+  res.json({ ok: true, id: Number(r.lastRowId), priority });
+  discordLog('🎫 Neues Ticket', `**${vbgTicketNr(newId)}** – ${String(subject).trim()} (${category}, Priorität: ${priority}) von ${req.user.username}`);
 });
 
 async function loadTicketFor(req, res) {
@@ -583,13 +657,13 @@ app.put('/api/tickets/:id', guard(), async (req, res) => {
     if (!['frage', 'problem', 'vorschlag', 'bewerbung', 'sonstiges'].includes(body.category)) {
       return res.status(400).json({ error: 'Ungültige Kategorie.' });
     }
-    if (body.category !== t.category) { set.category = body.category; changes.push(`Kategorie (→ ${body.category})`); }
-  }
-  if (body.priority !== undefined) {
-    if (!['niedrig', 'normal', 'hoch'].includes(body.priority)) {
-      return res.status(400).json({ error: 'Ungültige Priorität.' });
+    if (body.category !== t.category) {
+      set.category = body.category;
+      // Priorität folgt automatisch aus der Kategorie und ist nicht manuell änderbar.
+      const prio = priorityForCategory(body.category);
+      set.priority = prio;
+      changes.push(`Kategorie (→ ${body.category}), Priorität (auto → ${prio})`);
     }
-    if (body.priority !== t.priority) { set.priority = body.priority; changes.push(`Priorität (→ ${body.priority})`); }
   }
   if (body.description !== undefined) {
     const v = String(body.description || '').trim().slice(0, 4000);
