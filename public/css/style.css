@@ -298,6 +298,9 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ------------------------------ Coming Soon ------------------------------ */
 
+.netzplan-card { display: block; width: 100%; background: none; border: none; padding: 0; cursor: zoom-in; }
+.netzplan-card img { width: 100%; height: auto; border-radius: 18px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+
 .coming-soon {
   display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
   padding: 40px 20px 20px;
