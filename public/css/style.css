@@ -604,7 +604,7 @@ select.input { appearance: none; cursor: pointer; }
 .board-toolbar .input-search { max-width: 260px; }
 #board-info { font-size: 0.82rem; }
 
-.board-list { overflow: hidden; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }
+.board-list { overflow-x: auto; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }
 .board-table { width: 100%; border-collapse: collapse; }
 .board-table th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); padding: 12px 14px; }
 .board-table td { padding: 10px 14px; border-top: 1px solid var(--border); vertical-align: middle; }

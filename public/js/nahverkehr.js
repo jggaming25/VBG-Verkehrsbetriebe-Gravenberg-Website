@@ -56,13 +56,12 @@ VBG.nahverkehr = (function () {
       return;
     }
     wrap.innerHTML = `<table class="board-table">
-      <thead><tr><th>Zeit</th><th>Linie</th><th>Richtung</th><th>Kurs</th><th>Bus</th><th></th></tr></thead>
+      <thead><tr><th>Ankunft</th><th>Abfahrt</th><th>Linie</th><th>Richtung</th><th>Kurs</th><th>Bus</th><th></th></tr></thead>
       <tbody>${data.rows.map(boardRow).join('')}</tbody>
     </table>`;
   }
 
   function boardRow(r) {
-    const time = r.kind === 'abfahrt' ? r.dep : r.arr;
     const badges = [];
     if (r.active) badges.push('<span class="badge badge-activekur">⭐ Aktiver Kurs</span>');
     if (r.bus === 'Gelenk') badges.push('<span class="badge">Gelenk</span>');
@@ -73,8 +72,11 @@ VBG.nahverkehr = (function () {
     const login = !VBG.state.user
       ? ''
       : `<button class="btn btn-sm btn-ghost conn-request" data-trip="${r.tripId}" data-stop="${esc(r.lineName)}" data-line="${r.line}" title="Anschlussanfrage">🚏</button>`;
-    return `<tr class="board-row${r.active ? ' row-active' : ''}">
-      <td class="board-time"><b>${time}</b></td>
+    const arr = r.isStart ? '<span class="muted">-</span>' : (kind === 'ankunft' ? `<b>${r.arr}</b>` : r.arr);
+    const dep = r.isEnd ? '<span class="muted">-</span>' : (kind === 'abfahrt' ? `<b>${r.dep}</b>` : r.dep);
+    return `<tr class="board-row${r.tracked ? ' row-active' : ''}">
+      <td class="board-time">${arr}</td>
+      <td class="board-time">${dep}</td>
       <td><span class="bl-chip" style="--bl:${esc(r.color)}">L${r.line}</span></td>
       <td><span class="dir">${dirLabel(r)}</span></td>
       <td>Kurs ${r.course}</td>

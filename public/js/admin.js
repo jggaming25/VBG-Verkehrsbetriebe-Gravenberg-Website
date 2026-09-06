@@ -54,8 +54,8 @@ VBG.admin = (function () {
     const status = document.getElementById('act-status');
     document.getElementById('act-clear').disabled = !nvActive.line;
     status.textContent = nvActive.line
-      ? `Aktiver Kurs: Linie ${nvActive.line} · Kurs ${nvActive.course}`
-      : 'Kein aktiver Kurs.';
+      ? `Aktiver Kurs: Linie ${nvActive.line} · Kurs ${nvActive.course} (alle Kurse ansonsten aktiv)`
+      : 'Standard: alle Kurse aktiv.';
   }
 
   async function setActive() {

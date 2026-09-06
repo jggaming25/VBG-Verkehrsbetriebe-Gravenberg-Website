@@ -1019,7 +1019,8 @@ app.get('/api/nahverkehr/departures', async (req, res) => {
       arr: fmtTime(at.arr),
       depMin: at.dep,
       arrMin: at.arr,
-      active: !!(activeParts && activeParts[0] === trip.line && Number(activeParts[1]) === trip.course)
+      active: true,
+      tracked: !!(activeParts && activeParts.length >= 2 && activeParts[0] === trip.line && Number(activeParts[1]) === trip.course)
     };
     const ca = conns.find((c) => c.trip_a_id === trip.id && c.stop_id === stopId);
     if (ca) {
