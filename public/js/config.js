@@ -6,7 +6,7 @@ window.VBG = window.VBG || {};
 
 Object.assign(window.VBG, {
   emailjs: {
-    publicKey: 'svngJ-3wcQIv00tES',
+    publicKey: 'FLX9q6hpQStPk_UId',
     serviceId: 'service_be1j40a',
     verifyTemplateId: 'template_qk1hnlt',
     ticketTemplateId: 'template_ndghtcm'
