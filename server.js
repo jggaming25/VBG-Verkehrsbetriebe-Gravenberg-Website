@@ -1002,6 +1002,10 @@ app.get('/api/nahverkehr/departures', async (req, res) => {
     if (!at) continue;
     if (cancelledTrips.has(trip.id)) continue;
     if (cancelledStops.has(trip.id + ':' + stopId)) continue;
+    const isStart = at.seq === 0;
+    const isEnd = at.seq === trip.stops.length - 1;
+    if (kind === 'abfahrt' && isEnd) continue;
+    if (kind === 'ankunft' && isStart) continue;
     const anchor = kind === 'abfahrt' ? at.dep : at.arr;
     if (anchor < nowMin || anchor > horizon) continue;
     const row = {
