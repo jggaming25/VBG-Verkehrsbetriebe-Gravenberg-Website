@@ -815,6 +815,12 @@ function fmtTime(min) {
   return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 }
 
+function berlinNowMin() {
+  const parts = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const part = (t) => Number((parts.find((p) => p.type === t) || {}).value || 0);
+  return (part('hour') % 24) * 60 + part('minute');
+}
+
 let NAH = null;
 
 async function buildNahCache() {
@@ -987,8 +993,7 @@ app.get('/api/nahverkehr/departures', async (req, res) => {
   if (!stopRec) return res.json({ error: 'Keine Haltestellen geladen.', stop: null, kind, rows: [] });
   const stopId = stopRec.id;
 
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = berlinNowMin();
   const horizon = nowMin + 8 * 60;
 
   const rows = [];

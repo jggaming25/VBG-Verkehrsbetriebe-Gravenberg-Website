@@ -9,7 +9,7 @@ VBG.nahverkehr = (function () {
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   function fillSelect(sel, items, selected) {
-    sel.innerHTML = items.map((it) => `<option value="${esc(it.value)}">${esc(it.label)}</option>`).join('');
+    sel.innerHTML = '<option value="">🚏 Haltestelle wählen …</option>' + items.map((it) => `<option value="${esc(it.value)}">${esc(it.label)}</option>`).join('');
     if (selected) sel.value = selected;
   }
 
@@ -18,11 +18,9 @@ VBG.nahverkehr = (function () {
     stops = data.stops || [];
     lines = data.lines || [];
     const stopOptions = () => stops.map((s) => ({ value: String(s.id), label: '🚏 ' + s.name }));
-    const lastStop = Number(localStorage.getItem('vbg-nv-stop')) || null;
-    fillSelect($id('board-stop'), stopOptions(), lastStop || String((stops.find((s) => s.name === 'Gravenberg ZOB') || stops[0] || {}).id));
-    fillSelect($id('search-from'), stopOptions(), lastStop || String((stops.find((s) => s.name === 'Gravenberg ZOB') || stops[0] || {}).id));
-    fillSelect($id('search-to'), stopOptions(), String((stops.find((s) => s.name === 'Neuenburg Schule') || stops[0] || {}).id));
-    if (!$id('search-time').value) $id('search-time').value = timeNow();
+    fillSelect($id('board-stop'), stopOptions());
+    fillSelect($id('search-from'), stopOptions());
+    fillSelect($id('search-to'), stopOptions());
   }
 
   function timeNow(minOffset) {
@@ -33,7 +31,6 @@ VBG.nahverkehr = (function () {
   async function loadBoard() {
     const stop = $id('board-stop').value;
     if (!stop) return;
-    localStorage.setItem('vbg-nv-stop', stop);
     const btn = $id('board-refresh');
     btn.disabled = true;
     try {
@@ -90,9 +87,9 @@ VBG.nahverkehr = (function () {
     const from = $id('search-from');
     const to = $id('search-to');
     const time = $id('search-time').value || timeNow();
-    const fromName = from.options[from.selectedIndex] ? from.options[from.selectedIndex].text.replace(/^🚏 /, '') : '';
-    const toName = to.options[to.selectedIndex] ? to.options[to.selectedIndex].text.replace(/^🚏 /, '') : '';
-    if (!fromName || !toName) return;
+    if (!from.value || !to.value) return;
+    const fromName = from.options[from.selectedIndex].text.replace(/^🚏 /, '');
+    const toName = to.options[to.selectedIndex].text.replace(/^🚏 /, '');
     const btn = $id('search-run');
     btn.disabled = true;
     try {
@@ -180,7 +177,7 @@ VBG.nahverkehr = (function () {
   }
 
   function bind() {
-    $id('board-stop').addEventListener('change', () => { loadBoard(); if ($id('tab-nahverkehr').classList.contains('active')) search(); });
+    $id('board-stop').addEventListener('change', loadBoard);
     $id('board-refresh').addEventListener('click', loadBoard);
     $id('board-kind').addEventListener('click', (e) => {
       const chip = e.target.closest('[data-boardkind]');
