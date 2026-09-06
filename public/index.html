@@ -211,23 +211,53 @@
 
   <!-- ===================== LINIENÜBERSICHT ===================== -->
   <section id="tab-linien" class="tab">
-    <div class="coming-soon">
-      <div class="cs-visual" aria-hidden="true">
-        <svg viewBox="0 0 600 260" fill="none">
-          <rect x="20" y="20" width="560" height="220" rx="16"/>
-          <rect x="150" y="60" width="300" height="140" rx="22" stroke="var(--primary)" stroke-width="6"/>
-          <line x1="175" y1="60" x2="175" y2="30" stroke="var(--text-muted)" stroke-width="6" stroke-linecap="round"/>
-          <line x1="270" y1="60" x2="270" y2="30" stroke="var(--text-muted)" stroke-width="6" stroke-linecap="round"/>
-          <line x1="365" y1="60" x2="365" y2="30" stroke="var(--text-muted)" stroke-width="6" stroke-linecap="round"/>
-          <line x1="180" y1="90" x2="420" y2="90" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"/>
-          <rect x="180" y="150" width="60" height="34" rx="10" stroke="var(--primary)" stroke-width="5"/>
-          <rect x="360" y="150" width="60" height="34" rx="10" stroke="var(--primary)" stroke-width="5"/>
-        </svg>
+    <div class="page-head">
+      <div>
+        <h1>Linienübersicht</h1>
+        <p>Alle Buslinien in Gravenberg auf einen Blick – mit Routen, Haltestellen und Fahrzeiten. 🚌</p>
       </div>
-      <span class="tag tag-demo">Coming Soon</span>
-      <h1>Linienübersicht</h1>
-      <p class="cs-de">Alle Buslinien in Gravenberg werden hier demnächst vorgestellt – mit Routen, Haltestellen und Minuten-Takt. 🚌</p>
-      <p class="cs-en">All bus lines in Gravenberg will be presented here soon – with routes, stops and frequency. 🚌</p>
+    </div>
+
+    <div class="lines-grid">
+      <article class="line-card">
+        <div class="line-head">
+          <span class="bl-chip" style="--bl:#2e9e5b">Linie 19</span>
+          <h2>Stümp · Neuenburg · Gravenberg</h2>
+        </div>
+        <div class="line-routes">
+          <p class="route-line">
+            <span class="route-stop">Stümp, Voiskamp</span>
+            <span class="route-arrow">⟷</span>
+            <span class="route-stop">Gravenberg, ZOB</span>
+            <span class="route-time">Fahrzeit: 16 Minuten</span>
+          </p>
+          <div class="route-variants">
+            <span>🚏 Stümp, Voiskamp → Gravenberg, ZOB</span>
+            <span>🚏 Gravenberg, ZOB → Stümp, Voiskamp</span>
+          </div>
+        </div>
+        <p class="line-desc">Die Linie 19 ist unsere Verbindungslinie von Stümp, Neuenburg und Gravenberg und hält auch an der Schule Neuenburg. Für die Anwohner in Neuenburg und Stümp ist sie die wichtigste Anbindung in die Innenstadt. Wer zu einer der Haltestellen entlang der Linie fahren möchte, ist hier richtig.</p>
+      </article>
+
+      <article class="line-card">
+        <div class="line-head">
+          <span class="bl-chip" style="--bl:#1b78c2">Linie SB24</span>
+          <h2>Schnellbus · Neuenburg – Gravenberg</h2>
+        </div>
+        <div class="line-routes">
+          <p class="route-line">
+            <span class="route-stop">Neuenburg, Schule</span>
+            <span class="route-arrow">⟷</span>
+            <span class="route-stop">Gravenberg, ZOB</span>
+            <span class="route-time">Fahrzeit: 8 Minuten</span>
+          </p>
+          <div class="route-variants">
+            <span>🚏 Neuenburg, Schule → Gravenberg, ZOB</span>
+            <span>🚏 Gravenberg, ZOB → Neuenburg, Schule</span>
+          </div>
+        </div>
+        <p class="line-desc">Die Schnellbuslinie SB24 verbindet Neuenburg und Gravenberg ohne große Umwege und ist vor allem für unsere Schüler*innen an der Schule Neuenburg wichtig. In nur 8 Minuten erreicht man den Gravenberger ZOB. Die SB24 fährt zwar schnell über Neuenburg, Schule – die Linie 19 bedient die Haltestelle aber ebenfalls.</p>
+      </article>
     </div>
   </section>
 
