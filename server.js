@@ -540,11 +540,8 @@ app.put('/api/tickets/:id', guard(), async (req, res) => {
   const tid = Number(req.params.id);
   const t = await db.get('SELECT * FROM tickets WHERE id = ?', [tid]);
   if (!t) return res.status(404).json({ error: 'Ticket nicht gefunden.' });
-  const isCreator = t.user_id === req.user.id;
-  const isAssignee = t.assignee_id === req.user.id;
-  const isOwner = req.user.role === 'inhaber';
-  if (!isCreator && !isAssignee && !isOwner) {
-    return res.status(403).json({ error: 'Nur Ersteller, zugewiesener Bearbeiter oder Inhaber kann das Ticket bearbeiten.' });
+  if (!isStaff(req.user)) {
+    return res.status(403).json({ error: 'Nur das Team darf Tickets bearbeiten.' });
   }
   const body = req.body || {};
   const set = {};
@@ -646,7 +643,7 @@ app.post('/api/tickets/:id/unclaim', guard(['inhaber', 'bearbeiter']), async (re
   res.json({ ok: true });
 });
 
-app.post('/api/tickets/:id/close', guard(), async (req, res) => {
+app.post('/api/tickets/:id/close', guard(['inhaber', 'bearbeiter']), async (req, res) => {
   const { t, error } = await loadTicketFor(req, res);
   if (error) return;
   await db.run(`UPDATE tickets SET status='geschlossen', updated_at=datetime('now') WHERE id=?`, [t.id]);
@@ -657,7 +654,7 @@ app.post('/api/tickets/:id/close', guard(), async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/tickets/:id/reopen', guard(), async (req, res) => {
+app.post('/api/tickets/:id/reopen', guard(['inhaber', 'bearbeiter']), async (req, res) => {
   const { t, error } = await loadTicketFor(req, res);
   if (error) return;
   await db.run(`UPDATE tickets SET status='offen', assignee_id=NULL, updated_at=datetime('now') WHERE id=?`, [t.id]);

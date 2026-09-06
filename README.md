@@ -18,8 +18,8 @@ Website für das **fiktive Roblox Bus-RP-Game** „VBG Verkehrsbetriebe Gravenbe
 | **Konto / Kontoübersicht** | Profil, E-Mail-Verifizierung, Rollenübersicht aller Spieler. **Inhaber** können Rollen vergeben (Besucher/Bearbeiter/Inhaber) |
 
 ### Rollen
-- **Besucher** – kann Shifts sehen und Tickets erstellen; sieht im Tickets-Tab nur „Ticket erstellen“ + „Meine Tickets“
-- **Bearbeiter** (Staff) – zusätzlich: Ticket-Dashboard, Meldungen bearbeiten, Verwarnungen aussprechen
+- **Besucher** – kann Shifts sehen und Tickets erstellen; sieht im Tickets-Tab nur „Ticket erstellen“ + „Meine Tickets“ und kann in Tickets **nur kommentieren** (kein Bearbeiten, kein Schließen)
+- **Bearbeiter** (Staff) – zusätzlich: Ticket-Dashboard, Tickets bearbeiten/schließen, Meldungen bearbeiten, Verwarnungen aussprechen
 - **Inhaber** (Owner) – zusätzlich: Rollen vergeben, Shifts anlegen/löschen
 
 Die E-Mails **`janngenzmann@gmail.com`** und **`platzhalter1@gmail.com`** werden automatisch als **Inhaber** registriert. *(Beide sind über die Server-Variable `OWNER_EMAILS` änderbar.)*
@@ -165,7 +165,7 @@ VBG Website/
 
 **Meldungen & Verwarnungen:** `POST /api/reports` (alle, kein Selbstmelden) · `GET /api/reports` (Staff) · `POST /api/reports/:id/resolve` (Staff) · `POST /api/reports/:id/warn` (Staff, verwarnt + erledigt) · `GET /api/warnings` (Staff) · `POST /api/users/:id/warn` (Staff)
 
-> **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Erlaubt für **Ersteller**, **zugewiesenen Bearbeiter** und **Inhaber**. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt.
+> **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Nur für das **Team** (Bearbeiter/Inhaber); **Besucher** können nur kommentieren. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt. Auch **Schließen/Wieder öffnen** ist Staff-only.
 > **Nachrichten:** optional `attachment` (Base64-Daten-URL, max. ~8 MB pro Bild, wird im Browser auf 1200 px komprimiert).
 
 ---

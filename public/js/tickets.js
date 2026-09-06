@@ -148,11 +148,8 @@ VBG.tickets = (function () {
     </div>`;
   }
 
-  function canEdit(t) {
-    if (!VBG.state.user) return false;
-    if (VBG.state.user.role === 'inhaber') return true;
-    if (t.user_id === VBG.state.user.id) return true;
-    return t.assignee_id === VBG.state.user.id;
+  function canEdit() {
+    return !!(VBG.state.user && VBG.isStaff(VBG.state.user.role));
   }
 
   function renderComposer() {
@@ -206,9 +203,8 @@ VBG.tickets = (function () {
 
     const actions = document.getElementById('chat-actions');
     actions.innerHTML = '';
-    const isOwner = currentTicket.user_id === VBG.state.user.id;
 
-    if (canEdit(currentTicket) && currentTicket.status !== 'geschlossen') {
+    if (canEdit() && currentTicket.status !== 'geschlossen') {
       const btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-ghost';
       btn.textContent = '✏️ Bearbeiten';
@@ -224,13 +220,13 @@ VBG.tickets = (function () {
       btn.addEventListener('click', async () => { try { await API.post(`/api/tickets/${currentTicket.id}/${mine ? 'unclaim' : 'claim'}`); toast(mine ? 'Ticket abgegeben.' : 'Ticket übernommen!', 'ok'); refreshFlow(); } catch (e2) { toast(e2.message, 'err'); } });
       actions.appendChild(btn);
     }
-    if (currentTicket.status !== 'geschlossen' && (isOwner || staff)) {
+    if (currentTicket.status !== 'geschlossen' && staff) {
       const btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-danger';
       btn.textContent = 'Schließen';
       btn.addEventListener('click', async () => { try { await API.post(`/api/tickets/${currentTicket.id}/close`); toast('Ticket geschlossen.', 'ok'); refreshFlow(); } catch (e2) { toast(e2.message, 'err'); } });
       actions.appendChild(btn);
-    } else if (currentTicket.status === 'geschlossen' && (isOwner || staff)) {
+    } else if (currentTicket.status === 'geschlossen' && staff) {
       const btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-ghost';
       btn.textContent = 'Wieder öffnen';
