@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "keepalive": "node keep-alive.js"
   },
   "engines": {
     "node": ">=18"

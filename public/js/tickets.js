@@ -74,19 +74,19 @@ VBG.tickets = (function () {
     const data = await API.get('/api/tickets');
     tickets = data.tickets || [];
     const staff = VBG.isStaff(VBG.state.user.role);
-    const dashChip = document.querySelector('#tickets-subnav .chip[data-ticketsub="dashboard"]');
-    if (dashChip) dashChip.classList.toggle('hidden', !staff);
     document.getElementById('tickets-subline').textContent = staff
       ? `${tickets.length} Ticket(s) insgesamt · ${data.openCount} offen – übernimm ein Ticket!`
       : (data.openCount ? `${data.openCount} offene(s) Ticket(s) · unser Team meldet sich.` : 'Erstelle ein Ticket – unser Team kümmert sich.');
     if (!currentSub) currentSub = staff ? 'dashboard' : 'create';
+    if (VBG.state.ticketsTarget) { currentSub = VBG.state.ticketsTarget; VBG.state.ticketsTarget = null; }
     showSub(currentSub);
     render();
   }
 
   function showSub(name) {
     currentSub = name;
-    document.querySelectorAll('#tickets-subnav .chip').forEach((c) => c.classList.toggle('active', c.dataset.ticketsub === name));
+    document.getElementById('dd-tickets-dashboard').classList.toggle('active', name === 'dashboard');
+    document.getElementById('dd-tickets-create').classList.toggle('active', name === 'create');
     const staff = VBG.isStaff(VBG.state.user.role);
     document.getElementById('tickets-dashboard').classList.toggle('hidden', !staff || name !== 'dashboard');
     document.getElementById('tickets-create').classList.toggle('hidden', name !== 'create');
@@ -185,7 +185,14 @@ VBG.tickets = (function () {
 
   async function openTicket(id) {
     currentTicket = null;
-    const data = await API.get(`/api/tickets/${id}/messages`);
+    let data;
+    try {
+      data = await API.get(`/api/tickets/${id}/messages`);
+    } catch (e) {
+      toast(e.message, 'err');
+      backToList();
+      return;
+    }
     currentTicket = data.ticket;
     currentMessages = data.messages || [];
 
@@ -224,7 +231,14 @@ VBG.tickets = (function () {
       const btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-danger';
       btn.textContent = 'Schließen';
-      btn.addEventListener('click', async () => { try { await API.post(`/api/tickets/${currentTicket.id}/close`); toast('Ticket geschlossen.', 'ok'); refreshFlow(); } catch (e2) { toast(e2.message, 'err'); } });
+      btn.addEventListener('click', async () => {
+        try {
+          const res = await API.post(`/api/tickets/${currentTicket.id}/close`);
+          toast('Ticket geschlossen.', 'ok');
+          if (res && res.archive_url) copyArchiveLink(res.archive_url);
+          refreshFlow();
+        } catch (e2) { toast(e2.message, 'err'); }
+      });
       actions.appendChild(btn);
     } else if (currentTicket.status === 'geschlossen' && staff) {
       const btn = document.createElement('button');
@@ -232,6 +246,13 @@ VBG.tickets = (function () {
       btn.textContent = 'Wieder öffnen';
       btn.addEventListener('click', async () => { try { await API.post(`/api/tickets/${currentTicket.id}/reopen`); toast('Ticket wieder geöffnet.', 'ok'); refreshFlow(); } catch (e2) { toast(e2.message, 'err'); } });
       actions.appendChild(btn);
+      if (currentTicket.archive_token) {
+        const linkBtn = document.createElement('button');
+        linkBtn.className = 'btn btn-sm btn-ghost';
+        linkBtn.textContent = '🔗 Archiv-Link kopieren';
+        linkBtn.addEventListener('click', () => copyArchiveLink(location.origin + '/archiv/' + currentTicket.archive_token));
+        actions.appendChild(linkBtn);
+      }
     }
 
     renderMessages();
@@ -365,6 +386,14 @@ VBG.tickets = (function () {
     if (currentSub !== 'create') showSub('create');
   }
 
+  function copyArchiveLink(url) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => toast('Archiv-Link kopiert: ' + url, 'ok')).catch(() => { prompt('Archiv-Link für den Besucher:', url); });
+    } else {
+      prompt('Archiv-Link für den Besucher:', url);
+    }
+  }
+
   function openReport(messageId, userId, name) {
     if (!currentTicket) { toast('Bitte zuerst ein Ticket öffnen.', 'err'); return; }
     pendingReport = { ticket_id: currentTicket.id, message_id: messageId, reported_user_id: userId };
@@ -408,12 +437,6 @@ VBG.tickets = (function () {
   }
 
   function bind() {
-    document.querySelector('#tickets-subnav').addEventListener('click', (e) => {
-      const chip = e.target.closest('[data-ticketsub]');
-      if (!chip) return;
-      if (chip.dataset.ticketsub === 'create') onSwitchToCreate();
-      else showSub('dashboard');
-    });
     document.getElementById('tickets-view').addEventListener('click', (e) => {
       const item = e.target.closest('[data-ticket]');
       if (item) openTicketFlow(Number(item.dataset.ticket));

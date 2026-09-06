@@ -13,12 +13,12 @@ Website für das **fiktive Roblox Bus-RP-Game** „VBG Verkehrsbetriebe Gravenbe
 | **Start / Landing** | Hero mit `IMGs/Bild1.png` als breitem Hintergrund, restliche Bilder als Vorschaugalerie, Tags #Roblox #Bus #Fiktiv |
 | **Shifts** | Alle Shifts mit Datum, Uhrzeit + Vorschaubild. Untertabs **„Alle Shifts“ / „Shift erstellen“** (Shift erstellen nur für **Inhaber**). Bild aus der IMG-Galerie **oder eigener Upload** (wird im Browser komprimiert und in Turso gespeichert) |
 | **Netzplan / Linienübersicht** | „Coming Soon“ mit deutschen **und** englischen Texten |
-| **Tickets** | Nur nach Anmeldung sichtbar. Untertabs **„Dashboard“** (nur Staff) + **„Ticket erstellen“** (jeder) mit **„Meine Tickets“**. Besucher sehen nur „Ticket erstellen“. Discord-artiger Chat mit **Ticketnummern** (VBG-0001), Filter (Alle/Offen/In Arbeit/Geschlossen) + Suche, **Bearbeiten** (Thema, Kategorie, Priorität, Fälligkeitsdatum, Beschreibung – wird protokolliert), Bild-**Anhänge**, „Übernehmen“/„Abgeben“, Prioritäten, Kategorien, Schließen/Wieder öffnen, Systemmeldungen, **⚑-Melden** fremder Nachrichten |
+| **Tickets** | Nur nach Anmeldung sichtbar. Ab **Tickets** im Menü öffnet sich per **Hover ein Dropdown** – **„Ticket Dashboard“** (nur Staff) + **„Ticket erstellen“** (jeder, mit **„Meine Tickets“**). Besucher sehen nur „Ticket erstellen“. Discord-artiger Chat mit **Ticketnummern** (VBG-0001), Filter (Alle/Offen/In Arbeit/Geschlossen) + Suche, **Bearbeiten** (Thema, Kategorie, Priorität, Fälligkeitsdatum, Beschreibung – wird protokolliert), Bild-**Anhänge**, „Übernehmen“/„Abgeben“, Prioritäten, Kategorien, Schließen/Wieder öffnen, Systemmeldungen, **⚑-Melden** fremder Nachrichten. **Geschlossene Tickets** verschwinden für Besucher aus „Meine Tickets“ und sind danach nur noch über den **Archiv-Link** erreichbar, der beim Schließen erzeugt und vom Staff kopiert/verschickt wird (`/archiv/<token>`, öffentliche Read-only-Seite) |
 | **Admin** | Nur für Staff sichtbar: **Meldungen** (offene zuerst, „als erledigt markieren“ oder direkt **verwarnen**), **Verwarnungen** vergeben/Liste. Badge mit offenen Meldungen im Nav |
 | **Konto / Kontoübersicht** | Profil, E-Mail-Verifizierung, Rollenübersicht aller Spieler. **Inhaber** können Rollen vergeben (Besucher/Bearbeiter/Inhaber) |
 
 ### Rollen
-- **Besucher** – kann Shifts sehen und Tickets erstellen; sieht im Tickets-Tab nur „Ticket erstellen“ + „Meine Tickets“ und kann in Tickets **nur kommentieren** (kein Bearbeiten, kein Schließen)
+- **Besucher** – kann Shifts sehen und Tickets erstellen; sieht im Tickets-Tab nur „Ticket erstellen“ + „Meine Tickets“ (= offene + in Arbeit; **geschlossene nur noch per Archiv-Link**) und kann in Tickets **nur kommentieren** (kein Bearbeiten, kein Schließen). Ausgeloggt ist der **Tickets-Tab im Menü komplett unsichtbar**
 - **Bearbeiter** (Staff) – zusätzlich: Ticket-Dashboard, Tickets bearbeiten/schließen, Meldungen bearbeiten, Verwarnungen aussprechen
 - **Inhaber** (Owner) – zusätzlich: Rollen vergeben, Shifts anlegen/löschen
 
@@ -126,6 +126,8 @@ Mit Discord angemeldete Nutzer sind automatisch **E-Mail-verifiziert** und bekom
 | `OWNER_EMAILS` | `janngenzmann@gmail.com,platzhalter1@gmail.com` | optional |
 | `DISCORD_CLIENT_ID` | – | optional |
 | `DISCORD_CLIENT_SECRET` | – | optional |
+| `PING_INTERVAL_MINUTES` | `4` | optional (Server-Ticker + keep-alive.js) |
+| `TARGET_URL` | `https://vbg.onrender.com` | optional (nur keep-alive.js) |
 | `SESSION_SECRET` | (reserviert) | – |
 
 ---
@@ -134,13 +136,15 @@ Mit Discord angemeldete Nutzer sind automatisch **E-Mail-verifiziert** und bekom
 
 ```
 VBG Website/
-├── server.js              # Express-Server + komplette API (Auth, Discord OAuth, Shifts, Tickets, Rollen)
+├── server.js              # Express-Server + komplette API (Auth, Discord OAuth, Shifts, Tickets, Rollen, Archiv, Ping)
 ├── db.js                  # Turso-Verbindung + Tabellen
+├── keep-alive.js          # optionales Ping-Script gegen Render-Sleep
 ├── package.json
 ├── README.md
 ├── IMGs/                  # 13 breite Roblox-Screenshots (3440×1440), Bild1.png = Hero
 └── public/
     ├── index.html         # SPA mit allen Tabs + Modals
+    ├── archiv.html        # Read-only-Archivseite für geschlossene Tickets per Link
     ├── css/style.css      # Lichtgrünes Design, Light-/Dark-Mode
     └── js/
         ├── config.js      # EmailJS-Schlüssel hier eintragen!
@@ -163,10 +167,25 @@ VBG Website/
 
 **Tickets:** `GET /api/tickets` · `POST /api/tickets` · `GET /api/tickets/:id/messages` · `POST /api/tickets/:id/messages` · `PUT /api/tickets/:id` · `POST /api/tickets/:id/claim` · `.../unclaim` · `.../close` · `.../reopen`
 
+**Ticket-Archiv:** `GET /api/archive/:token` (öffentlich, Read-only) · `GET /archiv/:token` (Read-only-Seite)
+
+**Ping/Keep-Alive:** `GET /api/ping` · `npm run keepalive` (pingt `TARGET_URL`/`BASE_URL` alle `PING_INTERVAL_MINUTES` Min)
+
 **Meldungen & Verwarnungen:** `POST /api/reports` (alle, kein Selbstmelden) · `GET /api/reports` (Staff) · `POST /api/reports/:id/resolve` (Staff) · `POST /api/reports/:id/warn` (Staff, verwarnt + erledigt) · `GET /api/warnings` (Staff) · `POST /api/users/:id/warn` (Staff)
 
-> **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Nur für das **Team** (Bearbeiter/Inhaber); **Besucher** können nur kommentieren. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt. Auch **Schließen/Wieder öffnen** ist Staff-only.
+> **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Nur für das **Team** (Bearbeiter/Inhaber); **Besucher** können nur kommentieren. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt. Auch **Schließen/Wieder öffnen** ist Staff-only. Beim **Schließen** erzeugt der Server einen `archive_token`; die Antwort enthält `archive_url` – du kannst den Link direkt in die Zwischenablage kopieren und dem Besucher schicken.
 > **Nachrichten:** optional `attachment` (Base64-Daten-URL, max. ~8 MB pro Bild, wird im Browser auf 1200 px komprimiert).
+
+---
+
+## ⏱️ 7. Keep-Alive gegen Render-Sleep
+
+Render-Prozesse im **Free-Plan** schlafen nach ~15 Min ohne Traffic ein – die Seite antwortet dann erst nach einem Kaltstart wieder. Ein `setInterval` **innerhalb** des Servers kann das nicht verhindern, weil Render dabei den kompletten Prozess stoppt. Daher:
+
+- **Empfohlen (kostenlos):** externer Uptime-Monitor wie [UptimeRobot](https://uptimerobot.com) (Free: 50 Monitore, pingen alle 5 Min von **verschiedenen Standorten** aus) oder [cron-job.org](https://cron-job.org). Einfach eine URL-„Ping/GET“-Überwachung auf `https://DEINE-RENDER-URL/api/ping` anlegen. Für „immer eine andere IP“ mehrere solcher Dienste nutzen – eine einzelne Instanz hat nur **eine** öffentliche IP und kann „verschiedene IPs pro Ping“ nicht selbst erzeugen.
+- **Render Cron-Job** (Free: 2 Cron-Jobs): planmäßig `GET /api/ping` aufrufen (pingt aber nur von Render-IP).
+- **Lokal/Self-Hosted:** `npm run keepalive` – pingt `TARGET_URL` (oder `BASE_URL`/`http://localhost:3000`) alle `PING_INTERVAL_MINUTES` (Standard 4).
+- Der Server bietet zusätzlich `GET /api/ping` + einen eigenen Ticker (alle 4 Min, via `PING_INTERVAL_MINUTES` konfigurierbar) – das hilft lokal/bei Always-On, ersetzt aber keinen externen Monitor für den Render-Free-Sleep.
 
 ---
 

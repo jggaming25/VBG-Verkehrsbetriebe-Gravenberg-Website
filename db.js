@@ -119,6 +119,9 @@ async function init() {
   if (!(await hasColumn('tickets', 'due_date'))) {
     await client.execute(`ALTER TABLE tickets ADD COLUMN due_date TEXT`);
   }
+  if (!(await hasColumn('tickets', 'archive_token'))) {
+    await client.execute(`ALTER TABLE tickets ADD COLUMN archive_token TEXT`);
+  }
   if (!(await hasColumn('ticket_messages', 'attachment'))) {
     await client.execute(`ALTER TABLE ticket_messages ADD COLUMN attachment TEXT`);
   }

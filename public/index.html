@@ -35,7 +35,13 @@
       <button class="nav-link" data-tab="shifts">Shifts</button>
       <button class="nav-link" data-tab="netzplan">Netzplan</button>
       <button class="nav-link" data-tab="linien">Linienübersicht</button>
-      <button class="nav-link hidden" id="nav-tickets" data-tab="tickets">Tickets</button>
+      <div class="nav-dropdown hidden" id="nav-tickets-wrap">
+        <button class="nav-link" id="nav-tickets" data-tab="tickets">Tickets <span class="dd-caret">▾</span></button>
+        <div class="dropdown-menu hidden" id="tickets-dropdown">
+          <button class="dropdown-item hidden" id="dd-tickets-dashboard" type="button">📊 Ticket Dashboard</button>
+          <button class="dropdown-item" id="dd-tickets-create" type="button">➕ Ticket erstellen</button>
+        </div>
+      </div>
       <button class="nav-link hidden" id="nav-admin" data-tab="admin">Admin<span id="admin-badge" class="nav-badge hidden"></span></button>
       <button class="nav-link hidden" id="nav-account" data-tab="account">Konto</button>
     </div>
@@ -241,10 +247,6 @@
         <h1>Tickets</h1>
         <p id="tickets-subline">Erstelle ein Ticket – unser Team kümmert sich.</p>
       </div>
-    </div>
-    <div class="subnav" id="tickets-subnav">
-      <button class="chip" data-ticketsub="dashboard">📊 Dashboard</button>
-      <button class="chip" data-ticketsub="create">➕ Ticket erstellen</button>
     </div>
     <div class="subpanel" id="tickets-dashboard">
       <div class="ticket-toolbar">

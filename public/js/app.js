@@ -36,6 +36,7 @@
   /* ------------------------------ Tabs ------------------------------ */
 
   function showTab(name) {
+    $('tickets-dropdown').classList.add('hidden');
     if (name === 'tickets' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
     if (name === 'admin' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
     if (name === 'admin' && !VBG.isStaff(state.user.role)) { toast('Keine Berechtigung für den Admin-Bereich.', 'err'); return; }
@@ -52,6 +53,14 @@
     if (name === 'admin') VBG.admin.loadAdmin().catch((e) => toast(e.message, 'err'));
   }
   window.showTab = showTab;
+
+  function openTickets(sub) {
+    if (!state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
+    if (sub === 'dashboard' && !VBG.isStaff(state.user.role)) { toast('Keine Berechtigung für das Ticket-Dashboard.', 'err'); return; }
+    state.ticketsTarget = sub;
+    showTab('tickets');
+  }
+  VBG.openTickets = openTickets;
 
   /* ------------------------------ Auth UI ------------------------------ */
 
@@ -169,7 +178,8 @@
     const staff = logged && VBG.isStaff(state.user.role);
     $('auth-buttons').classList.toggle('hidden', logged);
     $('user-chip').classList.toggle('hidden', !logged);
-    $('nav-tickets').classList.toggle('hidden', !logged);
+    $('nav-tickets-wrap').classList.toggle('hidden', !logged);
+    $('dd-tickets-dashboard').classList.toggle('hidden', !staff);
     $('nav-admin').classList.toggle('hidden', !staff);
     $('nav-account').classList.toggle('hidden', !logged);
     if (logged) {
@@ -240,6 +250,21 @@
     document.querySelectorAll('[data-tab]').forEach((el) => {
       el.addEventListener('click', () => showTab(el.dataset.tab));
     });
+
+    // Tickets-Dropdown (Hover)
+    const ddWrap = $('nav-tickets-wrap');
+    const ddMenu = $('tickets-dropdown');
+    function ddOpen() {
+      if (ddWrap.classList.contains('hidden')) return;
+      ddMenu.classList.remove('hidden');
+    }
+    function ddClose() { ddMenu.classList.add('hidden'); }
+    ddWrap.addEventListener('mouseenter', ddOpen);
+    ddWrap.addEventListener('mouseleave', ddClose);
+    $('nav-tickets').addEventListener('click', (e) => { e.stopPropagation(); showTab('tickets'); });
+    $('dd-tickets-dashboard').addEventListener('click', () => { ddClose(); openTickets('dashboard'); });
+    $('dd-tickets-create').addEventListener('click', () => { ddClose(); openTickets('create'); });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#nav-tickets-wrap')) ddClose(); });
 
     // Theme
     $('theme-toggle').addEventListener('click', toggleTheme);
