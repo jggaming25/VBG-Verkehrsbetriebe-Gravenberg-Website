@@ -1236,7 +1236,11 @@ app.post('/api/nahverkehr/requests', guard(), async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Nicht angemeldet.' });
   const toStop = toTrip.stops.find((s) => s.stopId === stopRec.id);
   if (!toStop) return res.status(400).json({ error: 'Diese Linie hält nicht dort.' });
+  const { conns } = await nahCtx();
+  const conn = conns.find((c) => c.trip_b_id === toTrip.id && c.stop_id === stopRec.id);
+  if (!conn) return res.status(400).json({ error: 'An dieser Haltestelle gibt es für diese Fahrt keine gesicherte Verbindung – Anschlussanfragen sind nur bei Umstiegen möglich.' });
   const fromLineName = String(fromLine || '').trim();
+  if (fromLineName !== conn.a_line) return res.status(400).json({ error: `Anschlussanfrage nur mit der gesicherten Linie ${conn.a_line} möglich.` });
   let fromTrip = null;
   if (fromLineName) {
     const cands = NAH.trips
@@ -1247,6 +1251,8 @@ app.post('/api/nahverkehr/requests', guard(), async (req, res) => {
     if (cands.length) fromTrip = cands[0].trip;
   }
   if (!fromTrip) return res.status(400).json({ error: 'Kein passender Anschluss (an der Haltestelle kommt nichts früh genug an).' });
+  const waitMin = toStop.dep - fromTrip.stops.find((s) => s.stopId === stopRec.id).arr;
+  if (waitMin >= 2) return res.status(400).json({ error: `Umsteigezeit beträgt ${waitMin} Min. – Anschlussanfragen sind nur bei weniger als 2 Minuten Wartezeit möglich.` });
 
   const r = await db.run(
     `INSERT INTO connection_requests (from_trip_id, to_trip_id, stop_id, user_id, status) VALUES (?,?,?,?,?)`,

@@ -69,9 +69,10 @@ VBG.nahverkehr = (function () {
     if (r.connAfter) badges.push(`<span class="badge badge-conn">🔗 Anschluss → L${r.connAfter.line} in ${r.connAfter.waitMin} Min.</span>`);
     if (r.isStart) badges.push('<span class="badge muted">Start</span>');
     if (r.isEnd) badges.push('<span class="badge muted">Endstation</span>');
-    const login = !VBG.state.user
+    const canReq = r.connWait && Number(r.connWait.waitMin) < 2;
+    const login = !VBG.state.user || !canReq
       ? ''
-      : `<button class="btn btn-sm btn-ghost conn-request" data-trip="${r.tripId}" data-stop="${esc(r.lineName)}" data-line="${r.line}" title="Anschlussanfrage">🚏</button>`;
+      : `<button class="btn btn-sm btn-ghost conn-request" data-trip="${r.tripId}" data-stop="${esc(r.lineName)}" data-line="${r.line}" data-fline="${r.connWait.line}" title="Anschlussanfrage (Umstieg &lt; 2 Min.)">🚏</button>`;
     const arr = r.isStart ? '<span class="muted">-</span>' : (kind === 'ankunft' ? `<b>${r.arr}</b>` : r.arr);
     const dep = r.isEnd ? '<span class="muted">-</span>' : (kind === 'abfahrt' ? `<b>${r.dep}</b>` : r.dep);
     return `<tr class="board-row${r.tracked ? ' row-active' : ''}">
@@ -143,39 +144,15 @@ VBG.nahverkehr = (function () {
     document.querySelectorAll('.nav-link').forEach((n) => n.classList.toggle('active', n.dataset.tab === 'nahverkehr'));
   }
 
-  async function requestConnection(tripId, line) {
-    const other = lines.filter((l) => l.line !== line && l.kurse.length).map((l) => l.line);
-    if (!other.length) { toast('Kein passender Anschluss möglich.', 'err'); return; }
-    const target = await askConnectionLine(tripId, line, other);
-    if (!target) return;
+  async function requestConnection(tripId, line, fromLine) {
     const stopEl = $id('board-stop');
     const stopName = stopEl.options[stopEl.selectedIndex] ? stopEl.options[stopEl.selectedIndex].text.replace(/^🚏 /, '') : '';
     try {
-      const data = await API.post('/api/nahverkehr/requests', { stop: stopName, toTripId: tripId, fromLine: target });
+      const data = await API.post('/api/nahverkehr/requests', { stop: stopName, toTripId: tripId, fromLine });
       toast(`Anschlussanfrage gestellt (von Linie ${data.fromLine} → L${line}). Die Leitstelle prüft das.`, 'ok');
     } catch (e) {
       toast(e.message, 'err');
     }
-  }
-
-  function askConnectionLine(tripId, toLine, lines) {
-    return new Promise((resolve) => {
-      const li = lines.join(', ');
-      const div = document.createElement('div');
-      div.className = 'modal-ask';
-      div.innerHTML = `<div class="modal">
-          <div class="modal-backdrop"></div>
-          <div class="modal-card">
-            <div class="modal-head"><h2>🚏 Anschlussanfrage</h2><p class="muted">Mit welcher Linie kommt die Person an, um auf Linie ${toLine} zu warten?</p></div>
-            <div class="row gap line-pick">${lines.map((l) => `<button class="btn btn-ghost pick-line" data-line="${l}" type="button">Linie ${l}</button>`).join('')}</div>
-            <button class="btn btn-ghost btn-full mt" data-cancel type="button">Abbrechen</button>
-          </div>
-        </div>`;
-      document.body.appendChild(div);
-      div.querySelector('.modal-backdrop').addEventListener('click', () => { div.remove(); resolve(null); });
-      div.querySelector('[data-cancel]').addEventListener('click', () => { div.remove(); resolve(null); });
-      div.querySelectorAll('.pick-line').forEach((b) => b.addEventListener('click', () => { const v = b.dataset.line; div.remove(); resolve(v); }));
-    });
   }
 
   function bind() {
@@ -191,7 +168,7 @@ VBG.nahverkehr = (function () {
     $id('search-run').addEventListener('click', search);
     $id('board-list').addEventListener('click', (e) => {
       const b = e.target.closest('.conn-request');
-      if (b) requestConnection(Number(b.dataset.trip), b.dataset.line);
+      if (b) requestConnection(Number(b.dataset.trip), b.dataset.line, b.dataset.fline);
     });
     window.showTabNahverkehr = showTabNahverkehr;
   }
