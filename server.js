@@ -863,8 +863,7 @@ async function seedFahrplan() {
       console.error('[fahrplan] JSON-Fehler:', e.message);
     }
     if (fahrplan && Array.isArray(fahrplan.lines)) {
-      await db.run('BEGIN');
-      try {
+      await db.transaction(async (tx) => {
         const linesMeta = {};
         for (const lineDef of fahrplan.lines) {
           const stops = lineDef.stops || [];
@@ -872,8 +871,8 @@ async function seedFahrplan() {
           const hours = lineDef.hours || [];
           const stopIds = [];
           for (const name of stops) {
-            await db.run('INSERT INTO stops (name) VALUES (?) ON CONFLICT(name) DO NOTHING', [name]);
-            const row = await db.get('SELECT id FROM stops WHERE name = ?', [name]);
+            await tx.run('INSERT INTO stops (name) VALUES (?) ON CONFLICT(name) DO NOTHING', [name]);
+            const row = await tx.get('SELECT id FROM stops WHERE name = ?', [name]);
             stopIds.push(Number(row.id));
           }
           const n = stops.length;
@@ -884,17 +883,17 @@ async function seedFahrplan() {
                 for (const h of hours) {
                   const startMin = Number(h) * 60 + Number(mm);
                   const seedKey = `${lineDef.line}|${course}|${dir}|${startMin}`;
-                  await db.run(
+                  await tx.run(
                     `INSERT INTO trips (line, course, direction, seed_key) VALUES (?,?,?,?)
                      ON CONFLICT(seed_key) DO NOTHING`,
                     [lineDef.line, course, dir, seedKey]
                   );
-                  const tripRow = await db.get('SELECT id FROM trips WHERE seed_key = ?', [seedKey]);
+                  const tripRow = await tx.get('SELECT id FROM trips WHERE seed_key = ?', [seedKey]);
                   const tripId = Number(tripRow.id);
                   for (let i = 0; i < n; i++) {
                     const stopIdx = dir === 'hin' ? i : n - 1 - i;
                     const m = startMin + travel[i];
-                    await db.run(
+                    await tx.run(
                       `INSERT INTO trip_stops (trip_id, seq, stop_id, arr_min, dep_min) VALUES (?,?,?,?,?)
                        ON CONFLICT DO NOTHING`,
                       [tripId, i, stopIds[stopIdx], m, m]
@@ -912,12 +911,12 @@ async function seedFahrplan() {
             kurse: (lineDef.kurse || []).map((k) => ({ course: Number(k.course), bus: k.bus || 'Solo' }))
           };
         }
-        await setSetting('lines_meta', JSON.stringify(linesMeta));
-        await db.run('COMMIT');
-      } catch (e) {
-        await db.run('ROLLBACK').catch(() => {});
-        throw e;
-      }
+        await tx.run(
+          `INSERT INTO settings (key, value) VALUES (?,?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          ['lines_meta', JSON.stringify(linesMeta)]
+        );
+      });
     }
   }
   await buildNahCache();

@@ -20,6 +20,25 @@ async function run(sql, args = []) {
   return { lastRowId: res.lastInsertRowid, rowsAffected: res.rowsAffected };
 }
 
+async function transaction(work) {
+  const tx = await client.transaction('write');
+  const t = {
+    run: async (sql, args = []) => {
+      const res = await tx.execute({ sql, args });
+      return { lastRowId: res.lastInsertRowid, rowsAffected: res.rowsAffected };
+    },
+    get: async (sql, args = []) => (await tx.execute({ sql, args })).rows[0] || null,
+    all: async (sql, args = []) => (await tx.execute({ sql, args })).rows
+  };
+  try {
+    await work(t);
+    await tx.commit();
+  } catch (e) {
+    await tx.rollback().catch(() => {});
+    throw e;
+  }
+}
+
 async function hasColumn(table, column) {
   const res = await client.execute(`PRAGMA table_info(${table})`);
   return res.rows.some((r) => r.name === column);
@@ -196,4 +215,4 @@ async function init() {
   }
 }
 
-module.exports = { client, get, all, run, init };
+module.exports = { client, get, all, run, transaction, init };
