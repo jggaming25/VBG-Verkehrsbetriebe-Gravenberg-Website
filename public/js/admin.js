@@ -1,6 +1,174 @@
 /* VBG – Admin-Bereich: Meldungs-Banner verwalten + Kontoübersicht/Rollenverwaltung */
 VBG.admin = (function () {
   let users = [];
+  let nvLines = [];
+  let nvCourses = [];
+  let nvActive = { line: null, course: null };
+
+  /* ------------------------------ Nahverkehr Steuerung ------------------------------ */
+
+  function fillSelect(sel, items) {
+    sel.innerHTML = items.map((it) => `<option value="${String(it.value)}">${it.label}</option>`).join('');
+  }
+
+  function nvLineOptions(sel) {
+    fillSelect(sel, nvLines.map((l) => ({ value: l.line, label: 'Linie ' + l.line + ' – ' + l.name.split('·')[0] })));
+  }
+
+  function nvCourseOptions(sel) {
+    const line = sel.dataset.forline ? document.getElementById(sel.dataset.forline).value : null;
+    const kurse = nvLines.find((l) => l.line === line)?.kurse || [];
+    fillSelect(sel, kurse.map((k) => ({ value: String(k.course), label: 'Kurs ' + k.course + ' (' + k.bus + ')' })));
+  }
+
+  async function loadSteuerung() {
+    if (!VBG.isOwner(VBG.state.user.role)) return;
+    try {
+      const meta = await API.get('/api/nahverkehr/meta');
+      nvLines = meta.lines || [];
+      const active = await API.get('/api/nahverkehr/active');
+      nvActive = { line: active.line, course: active.course };
+      const cancels = await API.get('/api/nahverkehr/cancellations');
+      const reqs = await API.get('/api/nahverkehr/requests');
+      const conns = await API.get('/api/nahverkehr/connections');
+      nvLineOptions(document.getElementById('act-line'));
+      nvLineOptions(document.getElementById('cancel-line'));
+      if (nvActive.line) document.getElementById('act-line').value = nvActive.line;
+      if (nvActive.course) {
+        nvCourseOptions(document.getElementById('act-course'));
+        document.getElementById('act-course').value = String(nvActive.course);
+      } else {
+        nvCourseOptions(document.getElementById('act-course'));
+      }
+      nvCourseOptions(document.getElementById('cancel-course'));
+      renderActive();
+      renderCancels(cancels.cancellations || []);
+      renderRequests(reqs.requests || []);
+      renderConns(conns.connections || []);
+    } catch (e) {
+      toast('Nahverkehr-Steuerung: ' + e.message, 'err');
+    }
+  }
+
+  function renderActive() {
+    const status = document.getElementById('act-status');
+    document.getElementById('act-clear').disabled = !nvActive.line;
+    status.textContent = nvActive.line
+      ? `Aktiver Kurs: Linie ${nvActive.line} · Kurs ${nvActive.course}`
+      : 'Kein aktiver Kurs.';
+  }
+
+  async function setActive() {
+    const line = document.getElementById('act-line').value;
+    const course = Number(document.getElementById('act-course').value);
+    if (!line || !course) return;
+    try {
+      const data = await API.put('/api/nahverkehr/active', { line, course });
+      nvActive = { line: data.line, course: data.course };
+      toast(`Aktiver Kurs: Linie ${line} · Kurs ${course}`, 'ok');
+      renderActive();
+      VBG.nahverkehr.loadBoard();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function clearActive() {
+    try {
+      await API.put('/api/nahverkehr/active', {});
+      nvActive = { line: null, course: null };
+      toast('Aktiver Kurs deaktiviert.', 'ok');
+      renderActive();
+      VBG.nahverkehr.loadBoard();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function renderCancels(list) {
+    const wrap = document.getElementById('cancel-list');
+    const map = {};
+    for (const c of list) map[c.line + '|' + c.course] = (map[c.line + '|' + c.course] || 0) + 1;
+    const keys = Object.keys(map);
+    wrap.innerHTML = keys.length
+      ? keys.map((k) => {
+        const [line, course] = k.split('|');
+        return `<span class="chip chip-cancel">🚫 L${line} Kurs ${course}</span>`;
+      }).join('')
+      : '<p class="muted">Keine Ausfälle.</p>';
+  }
+
+  async function cancelKurs() {
+    const line = document.getElementById('cancel-line').value;
+    const course = Number(document.getElementById('cancel-course').value);
+    if (!line || !course) return;
+    if (!confirm(`Kurs ${course} der Linie ${line} wirklich ausfallen lassen? Alle Fahrten dieses Kurses werden ausgesetzt.`)) return;
+    try {
+      const data = await API.post('/api/nahverkehr/cancel-kurs', { line, course });
+      toast(`${data.count} Fahrten ausgesetzt.`, 'ok');
+      loadSteuerung();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function restoreKurs() {
+    const line = document.getElementById('cancel-line').value;
+    const course = Number(document.getElementById('cancel-course').value);
+    if (!line || !course) return;
+    try {
+      await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
+      toast('Kurs wieder aktiv.', 'ok');
+      loadSteuerung();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function renderRequests(list) {
+    const wrap = document.getElementById('req-list');
+    if (!list.length) {
+      wrap.innerHTML = '<div class="empty-state"><div class="big">🚏</div><p>Keine Anfragen.</p></div>';
+      return;
+    }
+    wrap.innerHTML = list.map((r) => {
+      const s = r.waitMin == null ? '' : (r.waitMin >= 0 ? ` · warte <b>${r.waitMin} Min.</b>` : ` · ⚠️ zu spät (${-r.waitMin} Min.)`);
+      const actions = r.status === 'offen'
+        ? `<button class="btn btn-sm btn-primary" data-acc="${r.id}">✅ Bestätigen</button>
+           <button class="btn btn-sm btn-ghost" data-dec="${r.id}">Ablehnen</button>`
+        : (r.status === 'angenommen' ? '<span class="badge badge-p-niedrig">angenommen</span>' : '<span class="muted">abgelehnt</span>');
+      return `<div class="req-item">
+        <div>
+          <div><b>${esc(r.username)}</b> · ${esc(r.stop)}</div>
+          <div class="report-meta">L${r.from.line} → L${r.to.line} (Kurs ${r.to.course})${s}</div>
+        </div>
+        <div class="req-actions">${actions}<button class="btn btn-sm btn-danger" data-delreq="${r.id}" title="Löschen">🗑️</button></div>
+      </div>`;
+    }).join('');
+  }
+
+  async function acceptRequest(id) {
+    try { await API.post(`/api/nahverkehr/requests/${id}/accept`); toast('Anschluss bestätigt.', 'ok'); loadSteuerung(); } catch (e) { toast(e.message, 'err'); }
+  }
+  async function declineRequest(id) {
+    try { await API.post(`/api/nahverkehr/requests/${id}/decline`); toast('Anfrage abgelehnt.', 'ok'); loadSteuerung(); } catch (e) { toast(e.message, 'err'); }
+  }
+  async function deleteRequest(id) {
+    try { await API.del(`/api/nahverkehr/requests/${id}`); toast('Anfrage entfernt.', 'ok'); loadSteuerung(); } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function renderConns(list) {
+    const wrap = document.getElementById('conn-list');
+    if (!list.length) {
+      wrap.innerHTML = '<div class="empty-state"><div class="big">🔗</div><p>Keine Verbindungen angelegt.</p></div>';
+      return;
+    }
+    wrap.innerHTML = list.map((c) => `
+      <div class="req-item">
+        <div>
+          <div><span class="bl-chip" style="--bl:${c.a.color}">L${c.a.line}</span> → <span class="bl-chip" style="--bl:${c.b.color}">L${c.b.line}</span> <span class="muted">an ${esc(c.stop)}</span></div>
+          <div class="report-meta">Anschluss von L${c.a.line} (Kurs) auf L${c.b.line} · ${c.created_by ? 'von ' + esc(c.created_by) : ''}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" data-delconn="${c.id}">✕</button>
+      </div>`).join('');
+  }
+
+  async function deleteConnection(id) {
+    if (!confirm('Verbindung wirklich entfernen?')) return;
+    try { await API.del('/api/nahverkehr/connections/' + id); toast('Verbindung entfernt.', 'ok'); loadSteuerung(); } catch (e) { toast(e.message, 'err'); }
+  }
 
   /* ------------------------------ Kontoübersicht (Rollentabelle) ------------------------------ */
 
@@ -9,6 +177,7 @@ VBG.admin = (function () {
     users = data.users || [];
     render();
     loadNotices();
+    loadSteuerung();
   }
 
   function render() {
@@ -130,6 +299,24 @@ VBG.admin = (function () {
     });
     document.getElementById('user-search').addEventListener('input', render);
     document.getElementById('notice-form').addEventListener('submit', submitNotice);
+    document.getElementById('act-line').addEventListener('change', () => nvCourseOptions(document.getElementById('act-course')));
+    document.getElementById('cancel-line').addEventListener('change', () => nvCourseOptions(document.getElementById('cancel-course')));
+    document.getElementById('act-set').addEventListener('click', setActive);
+    document.getElementById('act-clear').addEventListener('click', clearActive);
+    document.getElementById('cancel-set').addEventListener('click', cancelKurs);
+    document.getElementById('cancel-restore').addEventListener('click', restoreKurs);
+    document.getElementById('req-list').addEventListener('click', (e) => {
+      const a = e.target.closest('[data-acc]');
+      if (a) { acceptRequest(a.dataset.acc); return; }
+      const d = e.target.closest('[data-dec]');
+      if (d) { declineRequest(d.dataset.dec); return; }
+      const r = e.target.closest('[data-delreq]');
+      if (r) deleteRequest(r.dataset.delreq);
+    });
+    document.getElementById('conn-list').addEventListener('click', (e) => {
+      const c = e.target.closest('[data-delconn]');
+      if (c) deleteConnection(Number(c.dataset.delconn));
+    });
     loadNotices();
   }
 

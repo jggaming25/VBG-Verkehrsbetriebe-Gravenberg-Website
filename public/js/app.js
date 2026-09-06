@@ -3,7 +3,7 @@
   const state = (VBG.state = { user: null, authMode: 'login' });
 
   const $ = (id) => document.getElementById(id);
-  const TABS = ['start', 'shifts', 'netzplan', 'linien', 'tickets', 'admin', 'account'];
+  const TABS = ['start', 'shifts', 'netzplan', 'linien', 'nahverkehr', 'tickets', 'admin', 'account'];
 
   /* ------------------------------ Toasts / Modals ------------------------------ */
 
@@ -36,7 +36,6 @@
   /* ------------------------------ Tabs ------------------------------ */
 
   function showTab(name) {
-    $('tickets-dropdown').classList.add('hidden');
     if (name === 'tickets' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
     if (name === 'admin' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
     if (name === 'admin' && !VBG.isStaff(state.user.role)) { toast('Keine Berechtigung für den Admin-Bereich.', 'err'); return; }
@@ -49,6 +48,7 @@
 
     if (name === 'shifts') VBG.shifts.load().catch((e) => toast(e.message, 'err'));
     if (name === 'tickets') VBG.tickets.load().catch((e) => toast(e.message, 'err'));
+    if (name === 'nahverkehr') VBG.nahverkehr.load().catch((e) => toast(e.message, 'err'));
     if (name === 'account') renderAccount();
     if (name === 'admin') VBG.admin.load().catch((e) => toast(e.message, 'err'));
   }
@@ -414,6 +414,7 @@
 
     VBG.shifts.bind();
     VBG.tickets.bind();
+    VBG.nahverkehr.bind();
     VBG.admin.bind();
   }
 

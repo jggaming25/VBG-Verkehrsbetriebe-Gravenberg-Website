@@ -796,6 +796,559 @@ app.get('/archiv/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'archiv.html'));
 });
 
+/* ------------------------------ Nahverkehr (Fahrplan) ------------------------------ */
+
+async function getSetting(key) {
+  const r = await db.get('SELECT value FROM settings WHERE key = ?', [key]);
+  return r ? r.value : null;
+}
+async function setSetting(key, value) {
+  await db.run(
+    `INSERT INTO settings (key, value) VALUES (?,?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value]
+  );
+}
+
+function fmtTime(min) {
+  const m = ((Math.floor(Number(min)) % 1440) + 1440) % 1440;
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+
+let NAH = null;
+
+async function buildNahCache() {
+  const stops = await db.all('SELECT id, name FROM stops ORDER BY id');
+  const trips = await db.all('SELECT id, line, course, direction FROM trips ORDER BY line, course, direction, id');
+  const ts = await db.all('SELECT trip_id, seq, stop_id, arr_min, dep_min FROM trip_stops ORDER BY trip_id, seq');
+  const stopName = {};
+  for (const s of stops) stopName[s.id] = s.name;
+  const byTrip = {};
+  for (const row of ts) {
+    if (!byTrip[row.trip_id]) byTrip[row.trip_id] = [];
+    byTrip[row.trip_id].push({
+      seq: row.seq,
+      stopId: row.stop_id,
+      stopName: stopName[row.stop_id],
+      arr: row.arr_min,
+      dep: row.dep_min
+    });
+  }
+  NAH = {
+    stops,
+    stopName,
+    stopIdx: {},
+    trips: trips.map((t) => {
+      const st = byTrip[t.id] || [];
+      return {
+        id: t.id,
+        line: t.line,
+        course: t.course,
+        direction: t.direction,
+        stops: st,
+        dest: st.length ? st[st.length - 1].stopName : ''
+      };
+    })
+  };
+  for (const s of stops) NAH.stopIdx[s.id] = s.name;
+}
+
+async function seedFahrplan() {
+  const file = path.join(__dirname, 'fahrplaene', 'fahrplan.json');
+  if (fs.existsSync(file)) {
+    let fahrplan;
+    try {
+      fahrplan = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+      console.error('[fahrplan] JSON-Fehler:', e.message);
+    }
+    if (fahrplan && Array.isArray(fahrplan.lines)) {
+      await db.run('BEGIN');
+      try {
+        const linesMeta = {};
+        for (const lineDef of fahrplan.lines) {
+          const stops = lineDef.stops || [];
+          const travel = lineDef.travel_minutes || [];
+          const hours = lineDef.hours || [];
+          const stopIds = [];
+          for (const name of stops) {
+            await db.run('INSERT INTO stops (name) VALUES (?) ON CONFLICT(name) DO NOTHING', [name]);
+            const row = await db.get('SELECT id FROM stops WHERE name = ?', [name]);
+            stopIds.push(Number(row.id));
+          }
+          const n = stops.length;
+          for (const kurs of lineDef.kurse || []) {
+            const course = Number(kurs.course);
+            for (const dir of ['hin', 'zurück']) {
+              for (const mm of kurs.trips[dir] || []) {
+                for (const h of hours) {
+                  const startMin = Number(h) * 60 + Number(mm);
+                  const seedKey = `${lineDef.line}|${course}|${dir}|${startMin}`;
+                  await db.run(
+                    `INSERT INTO trips (line, course, direction, seed_key) VALUES (?,?,?,?)
+                     ON CONFLICT(seed_key) DO NOTHING`,
+                    [lineDef.line, course, dir, seedKey]
+                  );
+                  const tripRow = await db.get('SELECT id FROM trips WHERE seed_key = ?', [seedKey]);
+                  const tripId = Number(tripRow.id);
+                  for (let i = 0; i < n; i++) {
+                    const stopIdx = dir === 'hin' ? i : n - 1 - i;
+                    const m = startMin + travel[i];
+                    await db.run(
+                      `INSERT INTO trip_stops (trip_id, seq, stop_id, arr_min, dep_min) VALUES (?,?,?,?,?)
+                       ON CONFLICT DO NOTHING`,
+                      [tripId, i, stopIds[stopIdx], m, m]
+                    );
+                  }
+                }
+              }
+            }
+          }
+          linesMeta[lineDef.line] = {
+            name: lineDef.name || 'Linie ' + lineDef.line,
+            color: lineDef.color || '#2e9e5b',
+            stops: stops.length,
+            travel_minutes: travel,
+            kurse: (lineDef.kurse || []).map((k) => ({ course: Number(k.course), bus: k.bus || 'Solo' }))
+          };
+        }
+        await setSetting('lines_meta', JSON.stringify(linesMeta));
+        await db.run('COMMIT');
+      } catch (e) {
+        await db.run('ROLLBACK').catch(() => {});
+        throw e;
+      }
+    }
+  }
+  await buildNahCache();
+  console.log('[fahrplan] Nahverkehr geladen – Stops:', NAH.stops.length, 'Trips:', NAH.trips.length);
+}
+
+async function linesMetaMap() {
+  try {
+    return JSON.parse((await getSetting('lines_meta')) || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+async function nahCtx() {
+  if (!NAH) await seedFahrplan();
+  const [meta, tripCancels, stopCancels, conns, active] = await Promise.all([
+    linesMetaMap(),
+    db.all('SELECT trip_id FROM trip_cancellations'),
+    db.all('SELECT trip_id, stop_id FROM stop_cancellations'),
+    db.all(
+      `SELECT c.id, c.stop_id, c.trip_a_id, c.trip_b_id,
+              ta.line AS a_line, ta.course AS a_course, tb.line AS b_line, tb.course AS b_course
+       FROM connections c JOIN trips ta ON ta.id = c.trip_a_id JOIN trips tb ON tb.id = c.trip_b_id`
+    ),
+    getSetting('active_kurs')
+  ]);
+  const cancelledTrips = new Set(tripCancels.map((r) => r.trip_id));
+  const cancelledStops = new Set(stopCancels.map((r) => r.trip_id + ':' + r.stop_id));
+  const activeParts = active ? String(active).split('|') : null;
+  const busOf = {};
+  for (const [line, m] of Object.entries(meta)) {
+    for (const k of m.kurse || []) busOf[line + '|' + k.course] = k.bus;
+  }
+  return { meta, cancelledTrips, cancelledStops, conns, activeParts, busOf };
+}
+
+app.get('/api/nahverkehr/meta', async (req, res) => {
+  try {
+    if (!NAH) await seedFahrplan();
+    const meta = await linesMetaMap();
+    const groups = {};
+    for (const s of NAH.stops) groups[s.name] = { id: s.id, name: s.name, lines: [] };
+    for (const t of NAH.trips) {
+      for (const s of t.stops) {
+        const g = groups[s.stopName];
+        if (g && !g.lines.includes(t.line)) g.lines.push(t.line);
+      }
+    }
+    res.json({
+      lines: Object.entries(meta).map(([num, m]) => ({ line: num, name: m.name, color: m.color, kurse: m.kurse })),
+      stops: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name, 'de'))
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Nahverkehr nicht verfügbar.' });
+  }
+});
+
+app.get('/api/nahverkehr/departures', async (req, res) => {
+  const { meta, cancelledTrips, cancelledStops, conns, activeParts, busOf } = await nahCtx();
+  const stopParam = String(req.query.stop || '').trim();
+  const kind = req.query.kind === 'ankunft' ? 'ankunft' : 'abfahrt';
+  const limit = Math.min(60, Math.max(5, Number(req.query.limit) || 24));
+  let stopRec = stopParam && !Number.isNaN(Number(stopParam))
+    ? NAH.stops.find((s) => s.id === Number(stopParam))
+    : NAH.stops.find((s) => s.name.toLowerCase() === String(stopParam).toLowerCase());
+  if (!stopRec) stopRec = NAH.stops.find((s) => s.name === 'Gravenberg ZOB') || NAH.stops[0];
+  if (!stopRec) return res.json({ error: 'Keine Haltestellen geladen.', stop: null, kind, rows: [] });
+  const stopId = stopRec.id;
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const horizon = nowMin + 8 * 60;
+
+  const rows = [];
+  for (const trip of NAH.trips) {
+    const at = trip.stops.find((s) => s.stopId === stopId);
+    if (!at) continue;
+    if (cancelledTrips.has(trip.id)) continue;
+    if (cancelledStops.has(trip.id + ':' + stopId)) continue;
+    const anchor = kind === 'abfahrt' ? at.dep : at.arr;
+    if (anchor < nowMin || anchor > horizon) continue;
+    const row = {
+      tripId: trip.id,
+      line: trip.line,
+      lineName: meta[trip.line] ? meta[trip.line].name : trip.line,
+      color: meta[trip.line] ? meta[trip.line].color : '#2e9e5b',
+      course: trip.course,
+      bus: busOf[trip.line + '|' + trip.course] || 'Solo',
+      direction: trip.direction,
+      dest: trip.dest,
+      isStart: at.seq === 0,
+      isEnd: at.seq === trip.stops.length - 1,
+      dep: fmtTime(at.dep),
+      arr: fmtTime(at.arr),
+      depMin: at.dep,
+      arrMin: at.arr,
+      active: !!(activeParts && activeParts[0] === trip.line && Number(activeParts[1]) === trip.course)
+    };
+    const ca = conns.find((c) => c.trip_a_id === trip.id && c.stop_id === stopId);
+    if (ca) {
+      const bTrip = NAH.trips.find((t) => t.id === ca.trip_b_id);
+      const bStop = bTrip && bTrip.stops.find((s) => s.stopId === stopId);
+      if (bStop) row.connAfter = { line: ca.b_line, course: ca.b_course, dep: fmtTime(bStop.dep), waitMin: bStop.dep - at.arr };
+    }
+    const cb = conns.find((c) => c.trip_b_id === trip.id && c.stop_id === stopId);
+    if (cb) {
+      const aTrip = NAH.trips.find((t) => t.id === cb.trip_a_id);
+      const aStop = aTrip && aTrip.stops.find((s) => s.stopId === stopId);
+      if (aStop) row.connWait = { line: cb.a_line, course: cb.a_course, arr: fmtTime(aStop.arr), waitMin: at.dep - aStop.arr };
+    }
+    rows.push(row);
+  }
+  rows.sort((a, b) => (kind === 'abfahrt' ? a.depMin - b.depMin : a.arrMin - b.arrMin));
+  res.json({ stop: stopRec.name, stopId, kind, rows: rows.slice(0, limit) });
+});
+
+app.get('/api/nahverkehr/trips', async (req, res) => {
+  const { cancelledTrips, busOf } = await nahCtx();
+  const line = String(req.query.line || '').trim();
+  const course = req.query.course ? Number(req.query.course) : null;
+  const direction = String(req.query.direction || '').trim();
+  let trips = NAH.trips;
+  if (line) trips = trips.filter((t) => t.line === line);
+  if (course) trips = trips.filter((t) => t.course === course);
+  if (['hin', 'zurück'].includes(direction)) trips = trips.filter((t) => t.direction === direction);
+  const out = trips.map((t) => ({
+    id: t.id,
+    line: t.line,
+    course: t.course,
+    direction: t.direction,
+    dest: t.dest,
+    start: t.stops.length ? fmtTime(t.stops[0].dep) : null,
+    end: t.stops.length ? fmtTime(t.stops[t.stops.length - 1].arr) : null,
+    bus: busOf[t.line + '|' + t.course] || null,
+    cancelled: cancelledTrips.has(t.id)
+  })).sort((a, b) => a.line.localeCompare(b.line) || a.course - b.course || a.start.localeCompare(b.start));
+  res.json({ trips: out });
+});
+
+app.get('/api/nahverkehr/active', async (req, res) => {
+  const active = await getSetting('active_kurs');
+  if (!active) return res.json({ line: null, course: null });
+  const [line, course] = String(active).split('|');
+  res.json({ line, course: Number(course) });
+});
+
+app.put('/api/nahverkehr/active', guard(['inhaber']), async (req, res) => {
+  const { line, course } = req.body || {};
+  if (!line || !course || !Number.isInteger(Number(course))) {
+    if (!line && course == null) {
+      await setSetting('active_kurs', '');
+      return res.json({ ok: true, line: null, course: null });
+    }
+    return res.status(400).json({ error: 'Linie und Kurs angeben.' });
+  }
+  const exists = NAH.trips.find((t) => t.line === line && t.course === Number(course));
+  if (!exists) return res.status(400).json({ error: 'Diesen Kurs gibt es nicht.' });
+  await setSetting('active_kurs', `${line}|${Number(course)}`);
+  res.json({ ok: true, line, course: Number(course) });
+  discordLog('⭐ Aktiver Kurs gesetzt', `${req.user.username} hat Kurs ${course} der Linie ${line} aktiviert.`);
+});
+
+app.post('/api/nahverkehr/cancel-kurs', guard(['inhaber']), async (req, res) => {
+  const { line, course } = req.body || {};
+  const trips = NAH.trips.filter((t) => t.line === line && t.course === Number(course));
+  if (!trips.length) return res.status(400).json({ error: 'Kurs nicht gefunden.' });
+  for (const t of trips) {
+    await db.run('INSERT OR IGNORE INTO trip_cancellations (trip_id) VALUES (?)', [t.id]);
+  }
+  res.json({ ok: true, count: trips.length });
+  discordLog('🚫 Kurs fällt aus', `Kurs ${course} der Linie ${line} wurde von ${req.user.username} ausgesetzt (${trips.length} Fahrten).`);
+});
+
+app.delete('/api/nahverkehr/cancel-kurs', guard(['inhaber']), async (req, res) => {
+  const body = { ...((req.body || {})), ...(req.query || {}) };
+  const { line, course } = body;
+  const trips = NAH.trips.filter((t) => t.line === line && t.course === Number(course));
+  for (const t of trips) {
+    await db.run('DELETE FROM trip_cancellations WHERE trip_id = ?', [t.id]);
+  }
+  res.json({ ok: true });
+  discordLog('🚌 Kurs fährt wieder', `Kurs ${course} der Linie ${line} wurde von ${req.user.username} reaktiviert.`);
+});
+
+app.post('/api/nahverkehr/trips/:id/stop-cancel', guard(['inhaber']), async (req, res) => {
+  const tripId = Number(req.params.id);
+  const stopId = Number((req.body || {}).stopId);
+  if (!stopId) return res.status(400).json({ error: 'Haltestelle angeben.' });
+  const trip = NAH.trips.find((t) => t.id === tripId);
+  if (!trip || !trip.stops.some((s) => s.stopId === stopId)) return res.status(400).json({ error: 'Halt nicht in dieser Fahrt.' });
+  await db.run('INSERT OR IGNORE INTO stop_cancellations (trip_id, stop_id) VALUES (?,?)', [tripId, stopId]);
+  res.json({ ok: true });
+});
+
+app.delete('/api/nahverkehr/trips/:id/stop-cancel', guard(['inhaber']), async (req, res) => {
+  const tripId = Number(req.params.id);
+  const stopId = Number(req.query.stopId);
+  await db.run('DELETE FROM stop_cancellations WHERE trip_id = ? AND stop_id = ?', [tripId, stopId]);
+  res.json({ ok: true });
+});
+
+app.get('/api/nahverkehr/cancellations', guard(['inhaber']), async (req, res) => {
+  const rows = await db.all(
+    `SELECT tc.trip_id, t.line, t.course
+     FROM trip_cancellations tc JOIN trips t ON t.id = tc.trip_id
+     GROUP BY t.line, t.course`
+  );
+  res.json({ cancellations: rows });
+});
+
+/* Verbindungssuche */
+
+app.get('/api/nahverkehr/search', async (req, res) => {
+  const { cancelledTrips } = await nahCtx();
+  const fromName = String(req.query.from || '').trim();
+  const toName = String(req.query.to || '').trim();
+  const timeParam = String(req.query.time || '').trim();
+  const [h, m] = timeParam.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m) || m < 0 || m > 59 || h < 0 || h > 23) {
+    return res.status(400).json({ error: 'Ungültige Uhrzeit.' });
+  }
+  const t0 = h * 60 + m;
+  const fromId = NAH.stops.find((s) => s.name.toLowerCase() === fromName.toLowerCase());
+  const toId = NAH.stops.find((s) => s.name.toLowerCase() === toName.toLowerCase());
+  if (!fromId || !toId) return res.status(400).json({ error: 'Haltestellen nicht gefunden.' });
+  if (fromId.id === toId.id) return res.status(400).json({ error: 'Start und Ziel sind gleich.' });
+
+  const valid = (tid) => !cancelledTrips.has(tid);
+  const conns = (await db.all('SELECT trip_a_id, trip_b_id, stop_id FROM connections'))
+    .reduce((acc, c) => { acc.set(c.trip_a_id + ':' + c.trip_b_id + ':' + c.stop_id, true); return acc; }, new Map());
+
+  const direct = [];
+  for (const trip of NAH.trips) {
+    const fi = trip.stops.findIndex((s) => s.stopId === fromId.id);
+    const ti = trip.stops.findIndex((s) => s.stopId === toId.id);
+    if (fi >= 0 && ti > fi) {
+      const d = trip.stops[fi].dep;
+      if (d >= t0 && valid(trip.id)) direct.push({ trip, dep: d, arr: trip.stops[ti].arr });
+    }
+  }
+  direct.sort((a, b) => a.dep - b.dep);
+
+  const transfers = [];
+  outer: for (const t1 of NAH.trips) {
+    const fi = t1.stops.findIndex((s) => s.stopId === fromId.id);
+    if (fi < 0 || !valid(t1.id)) continue;
+    for (const via of t1.stops.slice(fi + 1)) {
+      const rel = via.dep;
+      if (rel < t0) continue;
+      for (const t2 of NAH.trips) {
+        if (t2.id === t1.id) continue;
+        const vIdx = t2.stops.findIndex((s) => s.stopId === via.stopId);
+        const ti = t2.stops.findIndex((s) => s.stopId === toId.id);
+        if (vIdx < 0 || ti <= vIdx || !valid(t2.id)) continue;
+        const dep2 = t2.stops[vIdx].dep;
+        const wait = dep2 - rel;
+        if (wait < 2 || wait > 45) continue;
+        const official = conns.has(t1.id + ':' + t2.id + ':' + via.stopId);
+        transfers.push({
+          trip1: t1, trip2: t2, via: via.stopName,
+          leg1Arr: t1.stops[t1.stops.length - 1].arr, // irrelevant
+          dep1: rel, arr1: via.arr,
+          dep2, arr2: t2.stops[ti].arr,
+          wait, official
+        });
+        if (transfers.length >= 40) break outer;
+      }
+    }
+  }
+  transfers.sort((a, b) => a.dep1 - b.dep1 || a.wait - b.wait);
+
+  const leg = (trip, depStop, dep, arrStop, arr) => ({
+    line: trip.line,
+    course: trip.course,
+    direction: trip.direction,
+    dest: trip.dest,
+    dep: { stop: depStop, time: fmtTime(dep) },
+    arr: { stop: arrStop, time: fmtTime(arr) }
+  });
+
+  res.json({
+    from: fromId.name,
+    to: toId.name,
+    direct: direct.slice(0, 3).map((d) => leg(d.trip, fromId.name, d.dep, toName, d.arr)),
+    transfers: transfers.slice(0, 3).map((x) => {
+      const t1Dep = x.trip1.stops.find((s) => s.stopId === fromId.id);
+      const t2Arr = x.trip2.stops.find((s) => s.stopId === toId.id);
+      return {
+        via: x.via,
+        waitMin: x.wait,
+        official: x.official,
+        leg1: leg(x.trip1, fromId.name, t1Dep.dep, x.via, x.arr1),
+        leg2: leg(x.trip2, x.via, x.dep2, toName, t2Arr.arr)
+      };
+    })
+  });
+});
+
+/* Anschlussanfragen */
+
+app.post('/api/nahverkehr/requests', guard(), async (req, res) => {
+  const { stop, toTripId, fromLine } = req.body || {};
+  const stopRec = NAH.stops.find((s) => s.name.toLowerCase() === String(stop || '').toLowerCase());
+  const toTrip = NAH.trips.find((t) => t.id === Number(toTripId));
+  if (!stopRec || !toTrip) return res.status(400).json({ error: 'Angaben unvollständig.' });
+  if (!req.user) return res.status(401).json({ error: 'Nicht angemeldet.' });
+  const toStop = toTrip.stops.find((s) => s.stopId === stopRec.id);
+  if (!toStop) return res.status(400).json({ error: 'Diese Linie hält nicht dort.' });
+  const fromLineName = String(fromLine || '').trim();
+  let fromTrip = null;
+  if (fromLineName) {
+    const cands = NAH.trips
+      .filter((t) => t.line === fromLineName && t.id !== toTrip.id && t.stops.some((s) => s.stopId === stopRec.id))
+      .map((t) => ({ trip: t, arr: t.stops.find((s) => s.stopId === stopRec.id).arr }))
+      .filter((x) => x.arr <= toStop.dep - 1)
+      .sort((a, b) => b.arr - a.arr);
+    if (cands.length) fromTrip = cands[0].trip;
+  }
+  if (!fromTrip) return res.status(400).json({ error: 'Kein passender Anschluss (an der Haltestelle kommt nichts früh genug an).' });
+
+  const r = await db.run(
+    `INSERT INTO connection_requests (from_trip_id, to_trip_id, stop_id, user_id, status) VALUES (?,?,?,?,?)`,
+    [fromTrip.id, toTrip.id, stopRec.id, req.user.id, 'offen']
+  );
+  res.json({ ok: true, id: Number(r.lastRowId), fromLine: fromTrip.line, fromCourse: fromTrip.course });
+  discordLog('🚏 Anschlussanfrage', `${req.user.username} möchte von Linie ${fromTrip.line} auf Linie ${toTrip.line} (Kurs ${toTrip.course}) an ${stopRec.name} umsteigen.`);
+});
+
+app.get('/api/nahverkehr/requests', guard(['inhaber']), async (req, res) => {
+  const { cancelledTrips } = await nahCtx();
+  const rows = await db.all(
+    `SELECT r.id, r.status, r.created_at, r.stop_id, r.from_trip_id, r.to_trip_id, u.username
+     FROM connection_requests r JOIN users u ON u.id = r.user_id
+     ORDER BY CASE r.status WHEN 'offen' THEN 0 ELSE 1 END, r.id ASC LIMIT 100`
+  );
+  const stopsIdx = {};
+  for (const s of NAH.stops) stopsIdx[s.id] = s.name;
+  const out = rows.map((r) => {
+    const fromT = NAH.trips.find((t) => t.id === r.from_trip_id);
+    const toT = NAH.trips.find((t) => t.id === r.to_trip_id);
+    const fromStop = fromT ? fromT.stops.find((s) => s.stopId === r.stop_id) : null;
+    const toStop = toT ? toT.stops.find((s) => s.stopId === r.stop_id) : null;
+    return {
+      id: r.id,
+      status: r.status,
+      username: r.username,
+      stop: stopsIdx[r.stop_id] || '?',
+      from: fromT ? { line: fromT.line, course: fromT.course, arr: fromStop ? fmtTime(fromStop.arr) : null } : null,
+      to: toT ? { line: toT.line, course: toT.course, dep: toStop ? fmtTime(toStop.dep) : null } : null,
+      waitMin: fromStop && toStop ? toStop.dep - fromStop.arr : null,
+      cancelledFrom: !!(fromT && cancelledTrips.has(fromT.id)),
+      cancelledTo: !!(toT && cancelledTrips.has(toT.id))
+    };
+  });
+  res.json({ requests: out });
+});
+
+app.post('/api/nahverkehr/requests/:id/accept', guard(['inhaber']), async (req, res) => {
+  const r = await db.get('SELECT * FROM connection_requests WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Anfrage nicht gefunden.' });
+  await db.run(
+    `INSERT OR IGNORE INTO connections (trip_a_id, trip_b_id, stop_id, created_by) VALUES (?,?,?,?)`,
+    [r.from_trip_id, r.to_trip_id, r.stop_id, req.user.id]
+  );
+  await db.run(`UPDATE connection_requests SET status='angenommen' WHERE id = ?`, [r.id]);
+  res.json({ ok: true });
+  discordLog('✅ Anschluss bestätigt', `${req.user.username} hat den Anschluss bestätigt (Anfrage #${r.id}).`);
+});
+
+app.post('/api/nahverkehr/requests/:id/decline', guard(['inhaber']), async (req, res) => {
+  await db.run(`UPDATE connection_requests SET status='abgelehnt' WHERE id = ?`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+app.delete('/api/nahverkehr/requests/:id', guard(['inhaber']), async (req, res) => {
+  await db.run('DELETE FROM connection_requests WHERE id = ?', [req.params.id]);
+  res.json({ ok: true });
+});
+
+/* Offizielle Verbindungen */
+
+app.get('/api/nahverkehr/connections', async (req, res) => {
+  const { meta } = await nahCtx();
+  const rows = await db.all(
+    `SELECT c.id, c.stop_id, c.trip_a_id, c.trip_b_id, u.username AS created_by,
+            ta.line AS a_line, ta.course AS a_course, ta.direction AS a_direction,
+            tb.line AS b_line, tb.course AS b_course, tb.direction AS b_direction
+     FROM connections c
+     JOIN trips ta ON ta.id = c.trip_a_id
+     JOIN trips tb ON tb.id = c.trip_b_id
+     LEFT JOIN users u ON u.id = c.created_by
+     ORDER BY c.id DESC LIMIT 100`
+  );
+  const stopsIdx = {};
+  for (const s of NAH.stops) stopsIdx[s.id] = s.name;
+  res.json({
+    connections: rows.map((r) => ({
+      id: r.id,
+      stop: stopsIdx[r.stop_id] || '?',
+      a: { line: r.a_line, course: r.a_course, direction: r.a_direction, color: meta[r.a_line] ? meta[r.a_line].color : null },
+      b: { line: r.b_line, course: r.b_course, direction: r.b_direction, color: meta[r.b_line] ? meta[r.b_line].color : null },
+      created_by: r.created_by || null
+    }))
+  });
+});
+
+app.post('/api/nahverkehr/connections', guard(['inhaber']), async (req, res) => {
+  const { fromTripId, toTripId, stop } = req.body || {};
+  const fromT = NAH.trips.find((t) => t.id === Number(fromTripId));
+  const toT = NAH.trips.find((t) => t.id === Number(toTripId));
+  const stopRec = stop ? NAH.stops.find((s) => s.name.toLowerCase() === String(stop).toLowerCase())
+                       : NAH.stops.find((s) => s.name === 'Gravenberg ZOB');
+  if (!fromT || !toT || !stopRec) return res.status(400).json({ error: 'Angaben unvollständig.' });
+  const aStop = fromT.stops.find((s) => s.stopId === stopRec.id);
+  const bStop = toT.stops.find((s) => s.stopId === stopRec.id);
+  if (!aStop || !bStop) return res.status(400).json({ error: 'Beide Linien halten nicht an dieser Haltestelle.' });
+  if (aStop.arr >= bStop.dep) return res.status(400).json({ error: 'Ankunft muss vor der Abfahrt liegen.' });
+  await db.run(
+    `INSERT OR IGNORE INTO connections (trip_a_id, trip_b_id, stop_id, created_by) VALUES (?,?,?,?)`,
+    [fromT.id, toT.id, stopRec.id, req.user.id]
+  );
+  res.json({ ok: true });
+  discordLog('🔗 Verbindung angelegt', `${req.user.username}: Linie ${fromT.line} (Kurs ${fromT.course}) → Linie ${toT.line} (Kurs ${toT.course}) an ${stopRec.name}.`);
+});
+
+app.delete('/api/nahverkehr/connections/:id', guard(['inhaber']), async (req, res) => {
+  await db.run('DELETE FROM connections WHERE id = ?', [req.params.id]);
+  res.json({ ok: true });
+});
+
 /* ------------------------------ Ping / Keep-Alive ------------------------------ */
 
 app.get('/api/ping', (req, res) => res.json({ ok: true, t: Date.now() }));
@@ -814,6 +1367,7 @@ app.use((err, req, res, next) => {
 
 async function main() {
   await db.init();
+  await seedFahrplan();
   app.listen(PORT, () => {
     console.log(`VBG Server läuft auf Port ${PORT}`);
     console.log(`BASE_URL: ${BASE_URL}`);

@@ -35,6 +35,7 @@
       <button class="nav-link" data-tab="shifts">Shifts</button>
       <button class="nav-link" data-tab="netzplan">Netzplan</button>
       <button class="nav-link" data-tab="linien">Linienübersicht</button>
+      <button class="nav-link" data-tab="nahverkehr">Nahverkehr</button>
       <div class="nav-dropdown hidden" id="nav-tickets-wrap">
         <button class="nav-link" id="nav-tickets" data-tab="tickets">Tickets <span class="dd-caret">▾</span></button>
         <div class="dropdown-menu hidden" id="tickets-dropdown">
@@ -270,6 +271,38 @@
     </div>
   </section>
 
+  <!-- ===================== NAHVERKEHR ===================== -->
+  <section id="tab-nahverkehr" class="tab">
+    <div class="page-head">
+      <div>
+        <h1>VBG Nahverkehr</h1>
+        <p>Alle Abfahrten und Ankünfte in Echtzeit plus Verbindungssuche. 🚏</p>
+      </div>
+    </div>
+
+    <div class="board-toolbar">
+      <select class="input input-search" id="board-stop"></select>
+      <div class="chips" id="board-kind">
+        <button class="chip active" data-boardkind="abfahrt">🚌 Abfahrt</button>
+        <button class="chip" data-boardkind="ankunft">🛬 Ankunft</button>
+      </div>
+      <button class="btn btn-ghost" id="board-refresh">🔄 Aktualisieren</button>
+      <span class="muted" id="board-info"></span>
+    </div>
+    <div id="board-list" class="board-list"></div>
+
+    <div class="card form-card mt">
+      <div class="modal-head"><h2>🔎 Verbindungssuche</h2><p class="muted">Finde eine direkte Verbindung oder einen Umstieg.</p></div>
+      <div class="row gap board-search-row">
+        <label class="field flex1"><span>Von</span><select class="input" id="search-from"></select></label>
+        <label class="field flex1"><span>Nach</span><select class="input" id="search-to"></select></label>
+        <label class="field"><span>Abfahrt</span><input class="input" id="search-time" type="time" value=""/></label>
+        <button class="btn btn-primary" id="search-run" style="align-self:flex-end">Suchen</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+  </section>
+
   <!-- ===================== TICKETS ===================== -->
   <section id="tab-tickets" class="tab">
     <div class="page-head">
@@ -375,6 +408,53 @@
         </form>
       </div>
       <div id="admin-notices" class="admin-list"></div>
+    </div>
+
+    <div class="admin-section">
+      <div class="section-head">
+        <h2>🚌 Nahverkehr Steuerung</h2>
+        <p class="muted">Aktiven Kurs setzen, Kurse ausfallen lassen und Anschlüsse verwalten.</p>
+      </div>
+
+      <div class="steer-grid">
+        <div class="card form-card">
+          <h3>⭐ Aktiver Kurs</h3>
+          <p class="muted">Wird in der Abfahrtstafel hervorgehoben.</p>
+          <div class="row gap">
+            <select class="input" id="act-line"></select>
+            <select class="input" id="act-course"></select>
+          </div>
+          <div class="row gap mt">
+            <button class="btn btn-primary btn-full" id="act-set">Setzen</button>
+            <button class="btn btn-ghost btn-full" id="act-clear" disabled>Deaktivieren</button>
+          </div>
+          <p class="muted mt" id="act-status">Kein aktiver Kurs.</p>
+        </div>
+
+        <div class="card form-card">
+          <h3>🚫 Kurse ausfallen lassen</h3>
+          <p class="muted">Ein ganzer Kurs (alle Fahrten) wird ausgesetzt.</p>
+          <div class="row gap">
+            <select class="input" id="cancel-line"></select>
+            <select class="input" id="cancel-course"></select>
+          </div>
+          <div class="row gap mt">
+            <button class="btn btn-danger btn-full" id="cancel-set">Ausfallen lassen</button>
+            <button class="btn btn-ghost btn-full" id="cancel-restore">Wieder aktivieren</button>
+          </div>
+          <div id="cancel-list" class="chip-list mt"></div>
+        </div>
+
+        <div class="card">
+          <h3>🚏 Anschlussanfragen</h3>
+          <div id="req-list" class="admin-list"></div>
+        </div>
+
+        <div class="card">
+          <h3>🔗 Bestätigte Verbindungen</h3>
+          <div id="conn-list" class="admin-list"></div>
+        </div>
+      </div>
     </div>
 
     <div class="admin-section">
@@ -545,6 +625,7 @@
 <script src="js/api.js"></script>
 <script src="js/shifts.js"></script>
 <script src="js/tickets.js"></script>
+<script src="js/nahverkehr.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/app.js"></script>
 </body>

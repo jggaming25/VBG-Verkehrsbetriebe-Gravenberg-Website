@@ -167,6 +167,8 @@ async function init() {
     )
   `);
 
+  await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trip_stops_trip_seq ON trip_stops (trip_id, seq)`);
+
   // Migrationen für ältere Schemas
   if (await hasColumn('users', 'password_hash') && !await hasColumn('users', 'discord_id')) {
     await client.execute(`ALTER TABLE users ADD COLUMN discord_id TEXT UNIQUE`);
