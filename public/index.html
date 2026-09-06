@@ -187,6 +187,15 @@
       </div>
       <button class="btn btn-primary" id="btn-new-ticket">+ Neues Ticket</button>
     </div>
+    <div class="ticket-toolbar">
+      <div class="chips" id="ticket-filters">
+        <button class="chip active" data-filter="alle">Alle</button>
+        <button class="chip" data-filter="offen">Offen</button>
+        <button class="chip" data-filter="in_arbeit">In Arbeit</button>
+        <button class="chip" data-filter="geschlossen">Geschlossen</button>
+      </div>
+      <input class="input ticket-search" id="ticket-search" type="search" placeholder="Suchen (Thema, Nummer, Autor) …"/>
+    </div>
     <div id="tickets-view"></div>
     <div id="ticket-chat" class="ticket-chat hidden">
       <div class="chat-head">
@@ -201,6 +210,13 @@
       </div>
       <div id="chat-messages" class="chat-messages"></div>
       <div class="chat-input">
+        <div class="chat-input-left">
+          <button class="icon-btn" id="chat-attach" title="Bild anhängen">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input class="hidden" type="file" id="chat-file" accept="image/*"/>
+          <div id="chat-attach-preview" class="attach-preview hidden"></div>
+        </div>
         <textarea id="chat-text" rows="2" placeholder="Nachricht schreiben …"></textarea>
         <button class="btn btn-primary" id="chat-send">Senden</button>
       </div>
@@ -350,6 +366,52 @@
         <textarea class="input" id="ticket-desc" rows="4" placeholder="Erkläre dein Anliegen so genau wie möglich …"></textarea>
       </label>
       <button class="btn btn-primary btn-full" type="submit">Ticket erstellen</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal hidden" id="modal-edit-ticket">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <button class="modal-close icon-btn" data-close="modal-edit-ticket">✕</button>
+    <div class="modal-head"><h2>Ticket bearbeiten</h2><p class="muted">Änderungen werden im Verlauf protokolliert.</p></div>
+    <form id="ticket-edit-form" class="form">
+      <label class="field">
+        <span>Thema</span>
+        <input class="input" id="edit-ticket-subject" type="text" maxlength="90" required/>
+      </label>
+      <div class="row gap">
+        <label class="field flex1">
+          <span>Kategorie</span>
+          <select class="input" id="edit-ticket-category">
+            <option value="frage">❓ Frage</option>
+            <option value="problem">⚠️ Problem / Bug</option>
+            <option value="vorschlag">💡 Vorschlag</option>
+            <option value="bewerbung">📝 Bewerbung</option>
+            <option value="sonstiges">📦 Sonstiges</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Priorität</span>
+          <select class="input" id="edit-ticket-priority">
+            <option value="niedrig">Niedrig</option>
+            <option value="normal">Normal</option>
+            <option value="hoch">Hoch</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Fällig bis</span>
+          <input class="input" id="edit-ticket-due" type="date"/>
+        </label>
+      </div>
+      <label class="field">
+        <span>Beschreibung</span>
+        <textarea class="input" id="edit-ticket-desc" rows="4" placeholder="Beschreibung des Anliegens …"></textarea>
+      </label>
+      <div class="row gap">
+        <button class="btn btn-ghost btn-full" type="button" data-close="modal-edit-ticket">Abbrechen</button>
+        <button class="btn btn-primary btn-full" type="submit">Speichern</button>
+      </div>
     </form>
   </div>
 </div>

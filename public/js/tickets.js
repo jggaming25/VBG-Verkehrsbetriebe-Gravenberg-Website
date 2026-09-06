@@ -3,6 +3,10 @@ VBG.tickets = (function () {
   let tickets = [];
   let currentTicket = null;
   let currentMessages = [];
+  let pendingAttachment = null;
+  const filters = { status: 'alle', q: '' };
+
+  const ticketNr = (t) => 'VBG-' + String(t.id).padStart(4, '0');
 
   function catIcon(c) {
     const icons = { frage: '❓', problem: '⚠️', vorschlag: '💡', bewerbung: '📝', sonstiges: '📦' };
@@ -17,20 +21,46 @@ VBG.tickets = (function () {
     return `<span class="badge badge-p-${esc(p)}">${esc(VBG.labels.priorities[p] || p)}</span>`;
   }
 
+  function dueDateText(t) {
+    if (!t.due_date) return '';
+    const d = new Date(t.due_date + 'T00:00:00');
+    if (isNaN(d)) return t.due_date;
+    return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', year: 'numeric' });
+  }
+
   function ticketItem(t) {
     const staff = VBG.isStaff(VBG.state.user.role);
+    const due = t.due_date
+      ? `<span class="${!staff && t.status !== 'geschlossen' && new Date(t.due_date + 'T23:59:59') < new Date() ? 'due-overdue' : ''}">📅 ${esc(dueDateText(t))}</span>`
+      : '';
     return `<button class="ticket-item" data-ticket="${t.id}">
       <div class="ticket-ic">${catIcon(t.category)}</div>
       <div class="ticket-info">
         <b>${esc(t.subject)}</b>
         <div class="ticket-sub">
-          ${staff ? `<span>von ${esc(t.user_name)}</span>` : ''}
+          <span class="ticket-nr">${ticketNr(t)}</span>
           <span>${esc(fmtDateTime(t.created_at))}</span>
+          ${staff ? `<span>von ${esc(t.user_name)}</span>` : ''}
           ${t.assignee_name ? `<span>👤 ${esc(t.assignee_name)}</span>` : ''}
+          ${due}
         </div>
       </div>
       <div class="ticket-badges">${prioBadge(t.priority)}${statusBadge(t.status)}</div>
     </button>`;
+  }
+
+  function filteredTickets() {
+    const q = filters.q.trim().toLowerCase();
+    return tickets.filter((t) => {
+      if (filters.status !== 'alle' && t.status !== filters.status) return false;
+      if (!q) return true;
+      return (
+        t.subject.toLowerCase().includes(q) ||
+        ticketNr(t).toLowerCase().includes(q) ||
+        String(t.id).includes(q) ||
+        (t.user_name || '').toLowerCase().includes(q)
+      );
+    });
   }
 
   async function load() {
@@ -50,11 +80,19 @@ VBG.tickets = (function () {
     document.getElementById('ticket-chat').classList.add('hidden');
     currentTicket = null;
 
-    if (!tickets.length) {
-      view.innerHTML = `<div class="empty-state"><div class="big">🎫</div><p>Noch keine Tickets vorhanden.</p><p class="muted">Lege das erste an – unser Team antwortet schnell.</p></div>`;
+    document.querySelectorAll('#ticket-filters .chip').forEach((c) => {
+      c.classList.toggle('active', c.dataset.filter === filters.status);
+    });
+
+    const list = filteredTickets();
+    const hasFilter = filters.status !== 'alle' || filters.q.trim();
+    if (!list.length) {
+      view.innerHTML = hasFilter
+        ? `<div class="empty-state"><div class="big">🔎</div><p>Keine Treffer für die aktuelle Filter-/Sucheinstellung.</p></div>`
+        : `<div class="empty-state"><div class="big">🎫</div><p>Noch keine Tickets vorhanden.</p><p class="muted">Lege das erste an – unser Team antwortet schnell.</p></div>`;
       return;
     }
-    view.innerHTML = `<div class="ticket-list">${tickets.map(ticketItem).join('')}</div>`;
+    view.innerHTML = `<div class="ticket-list">${list.map(ticketItem).join('')}</div>`;
   }
 
   function messageHtml(m) {
@@ -72,9 +110,46 @@ VBG.tickets = (function () {
           ${isStaffMsg ? `<span class="msg-role role-badge role-${esc(m.role)}">${esc(VBG.labels.roles[m.role] || m.role)}</span>` : ''}
           <span class="msg-time">${esc(fmtDateTime(m.created_at)).replace(', ', ' · ')}</span>
         </div>
-        <p>${esc(m.message)}</p>
+        ${m.message ? `<p>${esc(m.message)}</p>` : ''}
+        ${m.attachment ? `<a href="${m.attachment}" target="_blank" rel="noopener"><img class="msg-img" src="${m.attachment}" alt="Anhang"/></a>` : ''}
       </div>
     </div>`;
+  }
+
+  function canEdit(t) {
+    if (!VBG.state.user) return false;
+    if (VBG.state.user.role === 'inhaber') return true;
+    if (t.user_id === VBG.state.user.id) return true;
+    return t.assignee_id === VBG.state.user.id;
+  }
+
+  function renderComposer() {
+    const closed = currentTicket && currentTicket.status === 'geschlossen';
+    document.getElementById('chat-text').disabled = !!closed;
+    document.getElementById('chat-send').disabled = !!closed || !!pendingAttachment;
+    document.getElementById('chat-attach').disabled = !!closed;
+    document.getElementById('chat-text').placeholder = closed ? 'Ticket geschlossen.' : 'Nachricht schreiben …';
+  }
+
+  function renderAttachmentPreview() {
+    const box = document.getElementById('chat-attach-preview');
+    if (!pendingAttachment) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = `<img src="${pendingAttachment}" alt="Anhang"/><button class="attach-remove" type="button" title="Entfernen">✕</button>`;
+    box.querySelector('.attach-remove').addEventListener('click', (e) => { e.stopPropagation(); pendingAttachment = null; renderAttachmentPreview(); renderComposer(); });
+  }
+
+  function openTicketFlow(id) {
+    const chat = document.getElementById('ticket-chat');
+    const viewwrap = chat.parentElement;
+    document.querySelectorAll('.tab').forEach((s) => s.classList.add('hidden'));
+    const tab = document.getElementById('tab-tickets');
+    tab.classList.remove('hidden');
+    tab.classList.add('active');
+    document.querySelectorAll('.nav-link').forEach((n) => n.classList.toggle('active', n.dataset.tab === 'tickets'));
+    document.getElementById('tickets-view').classList.add('hidden');
+    chat.classList.remove('hidden');
+    openTicket(id);
   }
 
   async function openTicket(id) {
@@ -86,16 +161,26 @@ VBG.tickets = (function () {
     document.getElementById('chat-subject').textContent = currentTicket.subject;
     const staff = VBG.isStaff(VBG.state.user.role);
     const metaParts = [
+      ticketNr(currentTicket),
       catIcon(currentTicket.category) + ' ' + (VBG.labels.categories[currentTicket.category] || currentTicket.category),
-      '#' + currentTicket.id,
+      prioBadge(currentTicket.priority).replace(/<[^>]+>/g, ''),
       staff ? ('von ' + currentTicket.user_name) : null,
-      currentTicket.assignee_name ? ('👤 ' + currentTicket.assignee_name) : null
+      currentTicket.assignee_name ? ('👤 ' + currentTicket.assignee_name) : null,
+      currentTicket.due_date ? ('📅 bis ' + dueDateText(currentTicket)) : null
     ].filter(Boolean);
-    document.getElementById('chat-meta').textContent = metaParts.join('  ·  ');
+    document.getElementById('chat-meta').innerHTML = metaParts.join('  ·  ');
 
     const actions = document.getElementById('chat-actions');
     actions.innerHTML = '';
     const isOwner = currentTicket.user_id === VBG.state.user.id;
+
+    if (canEdit(currentTicket) && currentTicket.status !== 'geschlossen') {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm btn-ghost';
+      btn.textContent = '✏️ Bearbeiten';
+      btn.addEventListener('click', openEditModal);
+      actions.appendChild(btn);
+    }
 
     if (staff && currentTicket.status !== 'geschlossen') {
       const mine = currentTicket.assignee_id === VBG.state.user.id;
@@ -120,6 +205,7 @@ VBG.tickets = (function () {
     }
 
     renderMessages();
+    renderComposer();
     document.getElementById('tickets-view').classList.add('hidden');
     document.getElementById('ticket-chat').classList.remove('hidden');
     document.getElementById('chat-text').focus();
@@ -132,35 +218,81 @@ VBG.tickets = (function () {
   }
 
   async function refreshFlow() {
+    const id = currentTicket && currentTicket.id;
     try {
       await load();
-      if (currentTicket) {
-        const data = await API.get(`/api/tickets/${currentTicket.id}/messages`);
+      if (id) {
+        const data = await API.get(`/api/tickets/${id}/messages`);
         currentTicket = data.ticket;
         currentMessages = data.messages || [];
         renderMessages();
+        renderComposer();
         document.getElementById('chat-subject').textContent = currentTicket.subject;
+        document.getElementById('tickets-view').classList.add('hidden');
+        document.getElementById('ticket-chat').classList.remove('hidden');
       }
     } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function openEditModal() {
+    if (!currentTicket) return;
+    document.getElementById('edit-ticket-subject').value = currentTicket.subject || '';
+    document.getElementById('edit-ticket-category').value = currentTicket.category || 'frage';
+    document.getElementById('edit-ticket-priority').value = currentTicket.priority || 'normal';
+    document.getElementById('edit-ticket-due').value = currentTicket.due_date || '';
+    document.getElementById('edit-ticket-desc').value = currentTicket.description || '';
+    openModal('modal-edit-ticket');
+  }
+
+  async function submitEdit(e) {
+    e.preventDefault();
+    const body = {
+      subject: document.getElementById('edit-ticket-subject').value.trim(),
+      category: document.getElementById('edit-ticket-category').value,
+      priority: document.getElementById('edit-ticket-priority').value,
+      description: document.getElementById('edit-ticket-desc').value.trim(),
+      due_date: document.getElementById('edit-ticket-due').value || null
+    };
+    const btn = document.getElementById('ticket-edit-form').querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const data = await API.put(`/api/tickets/${currentTicket.id}`, body);
+      toast('Ticket gespeichert.', 'ok');
+      closeModal('modal-edit-ticket');
+      currentTicket = data.ticket;
+      currentMessages = data.messages || [];
+      renderMessages();
+      renderComposer();
+      document.getElementById('chat-subject').textContent = currentTicket.subject;
+    } catch (err) {
+      toast(err.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function sendMessage() {
     if (!currentTicket) return;
     if (currentTicket.status === 'geschlossen') { toast('Das Ticket ist geschlossen.', 'err'); return; }
     const text = document.getElementById('chat-text').value.trim();
-    if (!text) return;
+    if (!text && !pendingAttachment) return;
+    const attachment = pendingAttachment;
+    pendingAttachment = null;
+    renderAttachmentPreview();
     document.getElementById('chat-text').value = '';
     try {
       const btn = document.getElementById('chat-send');
       btn.disabled = true;
-      const data = await API.post(`/api/tickets/${currentTicket.id}/messages`, { message: text });
+      const data = await API.post(`/api/tickets/${currentTicket.id}/messages`, { message: text, attachment });
       currentTicket = data.ticket;
       currentMessages = data.messages || [];
       renderMessages();
     } catch (e) {
       toast(e.message, 'err');
+      pendingAttachment = attachment;
+      renderAttachmentPreview();
     } finally {
-      document.getElementById('chat-send').disabled = false;
+      renderComposer();
     }
   }
 
@@ -185,7 +317,7 @@ VBG.tickets = (function () {
       closeModal('modal-ticket');
       await load();
       await VBG.notifyNewTicket(subject, data.id, priority);
-      openTicket(data.id);
+      openTicketFlow(data.id);
     } catch (err) {
       toast(err.message, 'err');
     } finally {
@@ -193,17 +325,43 @@ VBG.tickets = (function () {
     }
   }
 
+  async function onFilePicked() {
+    const input = document.getElementById('chat-file');
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { toast('Bild größer als 8 MB.', 'err'); return; }
+    try {
+      pendingAttachment = await fileToDataURL(file, 1200);
+      renderAttachmentPreview();
+      renderComposer();
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
   function bind() {
     document.getElementById('tickets-view').addEventListener('click', (e) => {
       const item = e.target.closest('[data-ticket]');
-      if (item) openTicket(Number(item.dataset.ticket));
+      if (item) openTicketFlow(Number(item.dataset.ticket));
+    });
+    document.getElementById('ticket-filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-filter]');
+      if (!chip) return;
+      filters.status = chip.dataset.filter;
+      render();
+    });
+    document.getElementById('ticket-search').addEventListener('input', (e) => {
+      filters.q = e.target.value;
+      render();
     });
     document.getElementById('btn-new-ticket').addEventListener('click', openNew);
     document.getElementById('ticket-form').addEventListener('submit', submitNew);
+    document.getElementById('ticket-edit-form').addEventListener('submit', submitEdit);
     document.getElementById('chat-send').addEventListener('click', sendMessage);
     document.getElementById('chat-text').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
+    document.getElementById('chat-attach').addEventListener('click', () => document.getElementById('chat-file').click());
+    document.getElementById('chat-file').addEventListener('change', onFilePicked);
     document.getElementById('chat-back').addEventListener('click', () => { document.getElementById('ticket-chat').classList.add('hidden'); document.getElementById('tickets-view').classList.remove('hidden'); load(); });
   }
 

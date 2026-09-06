@@ -353,6 +353,8 @@ app.get('/api/images', (req, res) => {
 
 const isStaff = (u) => u && ['inhaber', 'bearbeiter'].includes(u.role);
 
+const vbgTicketNr = (id) => 'VBG-' + String(id).padStart(4, '0');
+
 app.get('/api/tickets', guard(), async (req, res) => {
   const staff = isStaff(req.user);
   const sql = `
@@ -378,16 +380,22 @@ app.post('/api/tickets', guard(), async (req, res) => {
     `INSERT INTO tickets (subject, category, description, priority, user_id, status) VALUES (?,?,?,?,?,'offen')`,
     [String(subject).trim(), category, String(description || '').trim(), priority || 'normal', req.user.id]
   );
+  const newId = Number(r.lastRowId);
   await db.run(
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
-    [Number(r.lastRowId), req.user.id, `Ticket erstellt von ${req.user.username}.`]
+    [newId, req.user.id, `Ticket ${vbgTicketNr(newId)} wurde erstellt von ${req.user.username}.`]
   );
   res.json({ ok: true, id: Number(r.lastRowId) });
 });
 
 async function loadTicketFor(req, res) {
   const tid = Number(req.params.id);
-  const t = await db.get('SELECT * FROM tickets WHERE id = ?', [tid]);
+  const t = await db.get(
+    `SELECT t.*, u.username AS user_name, a.username AS assignee_name
+     FROM tickets t JOIN users u ON u.id = t.user_id LEFT JOIN users a ON a.id = t.assignee_id
+     WHERE t.id = ?`,
+    [tid]
+  );
   if (!t) return { error: res.status(404).json({ error: 'Ticket nicht gefunden.' }) };
   if (t.user_id !== req.user.id && !isStaff(req.user)) {
     return { error: res.status(403).json({ error: 'Zugriff verweigert.' }) };
@@ -399,7 +407,7 @@ app.get('/api/tickets/:id/messages', guard(), async (req, res) => {
   const { t, error } = await loadTicketFor(req, res);
   if (error) return;
   const messages = await db.all(
-    `SELECT m.id, m.message, m.is_system, m.created_at, u.username, u.role, u.avatar
+    `SELECT m.id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
      FROM ticket_messages m JOIN users u ON u.id = m.user_id
      WHERE m.ticket_id = ? ORDER BY m.id ASC`,
     [t.id]
@@ -410,10 +418,18 @@ app.get('/api/tickets/:id/messages', guard(), async (req, res) => {
 app.post('/api/tickets/:id/messages', guard(), async (req, res) => {
   const { t, error } = await loadTicketFor(req, res);
   if (error) return;
-  const { message } = req.body || {};
-  if (!message || !String(message).trim()) return res.status(400).json({ error: 'Nachricht fehlt.' });
+  const { message, attachment } = req.body || {};
+  const text = String(message || '').trim();
+  if (!text && !attachment) return res.status(400).json({ error: 'Nachricht oder Anhang fehlt.' });
+  if (text.length > 4000) return res.status(400).json({ error: 'Nachricht zu lang (max. 4000 Zeichen).' });
+  if (attachment && !/^data:image\/[a-z0-9.+-]+;base64,/i.test(String(attachment))) {
+    return res.status(400).json({ error: 'Ungültiges Bild.' });
+  }
   if (t.status === 'geschlossen') return res.status(400).json({ error: 'Ticket ist geschlossen.' });
-  await db.run(`INSERT INTO ticket_messages (ticket_id, user_id, message) VALUES (?,?,?)`, [t.id, req.user.id, String(message).trim()]);
+  await db.run(
+    `INSERT INTO ticket_messages (ticket_id, user_id, message, attachment) VALUES (?,?,?,?)`,
+    [t.id, req.user.id, text || null, attachment || null]
+  );
   if (isStaff(req.user) && t.status === 'offen') {
     await db.run(`UPDATE tickets SET status='in_arbeit', assignee_id=?, updated_at=datetime('now') WHERE id=?`, [req.user.id, t.id]);
   } else {
@@ -421,12 +437,99 @@ app.post('/api/tickets/:id/messages', guard(), async (req, res) => {
   }
   const updated = await db.get('SELECT * FROM tickets WHERE id = ?', [t.id]);
   const messages = await db.all(
-    `SELECT m.id, m.message, m.is_system, m.created_at, u.username, u.role, u.avatar
+    `SELECT m.id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
      FROM ticket_messages m JOIN users u ON u.id = m.user_id
      WHERE m.ticket_id = ? ORDER BY m.id ASC`,
     [t.id]
   );
   res.json({ ticket: updated, messages });
+});
+
+const EDITABLE_FIELDS = ['subject', 'category', 'priority', 'description', 'due_date'];
+
+app.put('/api/tickets/:id', guard(), async (req, res) => {
+  const tid = Number(req.params.id);
+  const t = await db.get('SELECT * FROM tickets WHERE id = ?', [tid]);
+  if (!t) return res.status(404).json({ error: 'Ticket nicht gefunden.' });
+  const isCreator = t.user_id === req.user.id;
+  const isAssignee = t.assignee_id === req.user.id;
+  const isOwner = req.user.role === 'inhaber';
+  if (!isCreator && !isAssignee && !isOwner) {
+    return res.status(403).json({ error: 'Nur Ersteller, zugewiesener Bearbeiter oder Inhaber kann das Ticket bearbeiten.' });
+  }
+  const body = req.body || {};
+  const set = {};
+  const changes = [];
+
+  if (body.subject !== undefined) {
+    const v = String(body.subject).trim().slice(0, 90);
+    if (!v) return res.status(400).json({ error: 'Thema darf nicht leer sein.' });
+    if (v !== t.subject) { set.subject = v; changes.push(`Thema ("${t.subject}" → "${v}")`); }
+  }
+  if (body.category !== undefined) {
+    if (!['frage', 'problem', 'vorschlag', 'bewerbung', 'sonstiges'].includes(body.category)) {
+      return res.status(400).json({ error: 'Ungültige Kategorie.' });
+    }
+    if (body.category !== t.category) { set.category = body.category; changes.push(`Kategorie (→ ${body.category})`); }
+  }
+  if (body.priority !== undefined) {
+    if (!['niedrig', 'normal', 'hoch'].includes(body.priority)) {
+      return res.status(400).json({ error: 'Ungültige Priorität.' });
+    }
+    if (body.priority !== t.priority) { set.priority = body.priority; changes.push(`Priorität (→ ${body.priority})`); }
+  }
+  if (body.description !== undefined) {
+    const v = String(body.description || '').trim().slice(0, 4000);
+    if (v !== (t.description || '')) { set.description = v; changes.push(`Beschreibung`); }
+  }
+  if (body.due_date !== undefined) {
+    if (body.due_date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.due_date)) {
+        return res.status(400).json({ error: 'Ungültiges Fälligkeitsdatum.' });
+      }
+      const y = +body.due_date.slice(0, 4), m = +body.due_date.slice(5, 7), d = +body.due_date.slice(8, 10);
+      const dv = new Date(Date.UTC(y, m - 1, d));
+      if (dv.getUTCFullYear() !== y || dv.getUTCMonth() !== m - 1 || dv.getUTCDate() !== d) {
+        return res.status(400).json({ error: 'Ungültiges Fälligkeitsdatum.' });
+      }
+    }
+    if ((body.due_date || null) !== t.due_date) {
+      set.due_date = body.due_date || null;
+      changes.push(`Fälligkeitsdatum (→ ${body.due_date || 'ohne'})`);
+    }
+  }
+
+  if (t.status === 'geschlossen' && Object.keys(set).length) {
+    return res.status(400).json({ error: 'Geschlossene Tickets können nicht bearbeitet werden.' });
+  }
+  if (!Object.keys(set).length) {
+    return res.json({ ok: true });
+  }
+
+  const cols = [];
+  const vals = [];
+  Object.keys(set).forEach((f) => {
+    if (EDITABLE_FIELDS.includes(f)) { cols.push(`${f} = ?`); vals.push(set[f]); }
+  });
+  if (cols.length) cols.push("updated_at = datetime('now')");
+  await db.run(`UPDATE tickets SET ${cols.join(', ')} WHERE id = ?`, [...vals, tid]);
+
+  const msg = changes.length
+    ? `${req.user.username} hat das Ticket bearbeitet: ${changes.join(' · ')}`
+    : `${req.user.username} hat das Ticket bearbeitet.`;
+  await db.run(
+    `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
+    [tid, req.user.id, msg]
+  );
+
+  const updated = await db.get('SELECT * FROM tickets WHERE id = ?', [tid]);
+  const messages = await db.all(
+    `SELECT m.id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
+     FROM ticket_messages m JOIN users u ON u.id = m.user_id
+     WHERE m.ticket_id = ? ORDER BY m.id ASC`,
+    [tid]
+  );
+  res.json({ ok: true, ticket: updated, messages });
 });
 
 app.post('/api/tickets/:id/claim', guard(['inhaber', 'bearbeiter']), async (req, res) => {

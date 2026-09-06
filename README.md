@@ -13,7 +13,7 @@ Website für das **fiktive Roblox Bus-RP-Game** „VBG Verkehrsbetriebe Gravenbe
 | **Start / Landing** | Hero mit `IMGs/Bild1.png` als breitem Hintergrund, restliche Bilder als Vorschaugalerie, Tags #Roblox #Bus #Fiktiv |
 | **Shifts** | Alle Shifts mit Datum, Uhrzeit + Vorschaubild. **Inhaber** legen Shifts an – Bild aus der IMG-Galerie **oder eigener Upload** (wird im Browser komprimiert und in Turso gespeichert) |
 | **Netzplan / Linienübersicht** | „Coming Soon“ mit deutschen **und** englischen Texten |
-| **Tickets** | Nur nach Anmeldung sichtbar. Discord-artiger Chat, „Übernehmen“/„Abgeben“, Prioritäten, Kategorien, Schließen/Wieder öffnen, Systemmeldungen |
+| **Tickets** | Nur nach Anmeldung sichtbar. Discord-artiger Chat mit **Ticketnummern** (VBG-0001), Filter (Alle/Offen/In Arbeit/Geschlossen) + Suche, **Bearbeiten** (Thema, Kategorie, Priorität, Fälligkeitsdatum, Beschreibung – wird protokolliert), Bild-**Anhänge**, „Übernehmen“/„Abgeben“, Prioritäten, Kategorien, Schließen/Wieder öffnen, Systemmeldungen |
 | **Konto / Kontoübersicht** | Profil, E-Mail-Verifizierung, Rollenübersicht aller Spieler. **Inhaber** können Rollen vergeben (Besucher/Bearbeiter/Inhaber) |
 
 ### Rollen
@@ -160,7 +160,10 @@ VBG Website/
 
 **Shifts:** `GET /api/shifts` · `POST /api/shifts` (Inhaber) · `DELETE /api/shifts/:id` (Inhaber) · `GET /api/images`
 
-**Tickets:** `GET /api/tickets` · `POST /api/tickets` · `GET /api/tickets/:id/messages` · `POST /api/tickets/:id/messages` · `POST /api/tickets/:id/claim` · `.../unclaim` · `.../close` · `.../reopen`
+**Tickets:** `GET /api/tickets` · `POST /api/tickets` · `GET /api/tickets/:id/messages` · `POST /api/tickets/:id/messages` · `PUT /api/tickets/:id` · `POST /api/tickets/:id/claim` · `.../unclaim` · `.../close` · `.../reopen`
+
+> **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Erlaubt für **Ersteller**, **zugewiesenen Bearbeiter** und **Inhaber**. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt.
+> **Nachrichten:** optional `attachment` (Base64-Daten-URL, max. ~8 MB pro Bild, wird im Browser auf 1200 px komprimiert).
 
 ---
 

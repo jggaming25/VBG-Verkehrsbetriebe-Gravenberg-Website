@@ -362,8 +362,20 @@ button { font-family: inherit; cursor: pointer; }
 
 .msg-system { align-self: center; font-size: 0.76rem; color: var(--text-muted); background: none; border: none; text-align: center; padding: 4px; }
 
-.chat-input { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--border); background: var(--surface-2); }
-.chat-input textarea { flex: 1; }
+.chat-input { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--border); background: var(--surface-2); align-items: stretch; }
+.chat-input textarea { flex: 1; resize: none; }
+.chat-input-left { display: flex; align-items: center; gap: 8px; }
+.attach-preview { position: relative; width: 46px; height: 46px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); flex: none; }
+.attach-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.attach-remove { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; line-height: 15px; padding: 0; border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 11px; cursor: pointer; text-align: center; }
+.attach-remove:hover { background: #d33; }
+.msg-img { max-width: 320px; max-height: 240px; border-radius: 10px; border: 1px solid var(--border); margin-top: 6px; display: block; cursor: zoom-in; background: #fff; }
+
+.ticket-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; flex: none; }
+.ticket-search { max-width: 280px; }
+.ticket-nr { font-weight: 800; color: var(--primary); }
+.due-overdue { color: var(--danger); font-weight: 700; }
 
 /* ------------------------------ Konto ------------------------------ */
 

@@ -70,6 +70,7 @@ async function init() {
       priority TEXT NOT NULL DEFAULT 'normal',
       user_id INTEGER NOT NULL REFERENCES users(id),
       assignee_id INTEGER REFERENCES users(id),
+      due_date TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
@@ -79,7 +80,8 @@ async function init() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id),
-      message TEXT NOT NULL,
+      message TEXT,
+      attachment TEXT,
       is_system INTEGER NOT NULL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     )
@@ -91,6 +93,12 @@ async function init() {
   }
   if (!(await hasColumn('users', 'avatar'))) {
     await client.execute(`ALTER TABLE users ADD COLUMN avatar TEXT`);
+  }
+  if (!(await hasColumn('tickets', 'due_date'))) {
+    await client.execute(`ALTER TABLE tickets ADD COLUMN due_date TEXT`);
+  }
+  if (!(await hasColumn('ticket_messages', 'attachment'))) {
+    await client.execute(`ALTER TABLE ticket_messages ADD COLUMN attachment TEXT`);
   }
 }
 

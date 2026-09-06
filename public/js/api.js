@@ -52,3 +52,26 @@ function avatarHtml(user, sizeClass) {
   const ch = esc(name.trim().charAt(0).toUpperCase() || '?');
   return `<span class="avatar ${sizeClass || ''}">${ch}</span>`;
 }
+
+function fileToDataURL(file, maxSide) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+    reader.onload = () => {
+      if (!maxSide || !/^image\//i.test(file.type)) { resolve(reader.result); return; }
+      const img = new Image();
+      img.onerror = () => reject(new Error('Keine gültige Bilddatei.'));
+      img.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        if (scale === 1) { resolve(reader.result); return; }
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * scale));
+        c.height = Math.max(1, Math.round(img.height * scale));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
