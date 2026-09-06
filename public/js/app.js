@@ -374,14 +374,22 @@
     // Tickets-Dropdown (Klick + Hover)
     const ddWrap = $('nav-tickets-wrap');
     const ddMenu = $('tickets-dropdown');
-    function ddOpen() { if (ddWrap.classList.contains('hidden')) return; ddMenu.classList.remove('hidden'); }
+    function ddOpen() {
+      if (ddWrap.classList.contains('hidden')) return;
+      const btn = $('nav-tickets');
+      const r = btn.getBoundingClientRect();
+      const w = r.width >= 230 ? r.width : 230;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+      ddMenu.style.cssText = `position:fixed; top:${Math.round(r.bottom + 8)}px; left:${Math.round(left)}px; min-width:${w}px;`;
+      ddMenu.classList.remove('hidden');
+    }
     function ddClose() { ddMenu.classList.add('hidden'); }
     ddWrap.addEventListener('mouseenter', ddOpen);
     ddWrap.addEventListener('mouseleave', ddClose);
     $('nav-tickets').addEventListener('click', (e) => {
       e.stopPropagation();
       const willOpen = ddMenu.classList.contains('hidden');
-      if (willOpen) { showTab('tickets'); ddMenu.classList.remove('hidden'); }
+      if (willOpen) { showTab('tickets'); ddOpen(); }
       else { ddClose(); }
     });
     $('dd-tickets-dashboard').addEventListener('click', () => { ddClose(); openTickets('dashboard'); });
