@@ -1,0 +1,7 @@
+# site: .gitignore für die VBG Website
+node_modules/
+local.db
+local.db-*
+.env
+.env.*
+*.log
