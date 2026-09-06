@@ -349,6 +349,95 @@ app.get('/api/images', (req, res) => {
   }
 });
 
+/* ------------------------------ Reports & Verwarnungen ------------------------------ */
+
+app.post('/api/reports', guard(), async (req, res) => {
+  try {
+    const { reported_user_id, reason, details, ticket_id, message_id } = req.body || {};
+    const rid = Number(reported_user_id);
+    if (!rid || rid === req.user.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst melden.' });
+    const reasonStr = String(reason || '').trim();
+    if (!reasonStr) return res.status(400).json({ error: 'Bitte einen Grund angeben.' });
+    if (reasonStr.length > 200) return res.status(400).json({ error: 'Grund zu lang (max. 200 Zeichen).' });
+    const target = await db.get('SELECT id FROM users WHERE id = ?', [rid]);
+    if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+    await db.run(
+      `INSERT INTO reports (reported_user_id, reporter_user_id, ticket_id, message_id, reason, details)
+       VALUES (?,?,?,?,?,?)`,
+      [rid, req.user.id, ticket_id ? Number(ticket_id) : null, message_id ? Number(message_id) : null, reasonStr, String(details || '').trim().slice(0, 1000) || null]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[reports create]', e);
+    res.status(500).json({ error: 'Serverfehler beim Melden.' });
+  }
+});
+
+app.get('/api/reports', guard(['inhaber', 'bearbeiter']), async (req, res) => {
+  const reports = await db.all(
+    `SELECT r.*, ru.username AS reported_name, re.username AS reporter_name, m.message AS message_text, t.subject AS ticket_subject
+     FROM reports r
+     JOIN users ru ON ru.id = r.reported_user_id
+     JOIN users re ON re.id = r.reporter_user_id
+     LEFT JOIN ticket_messages m ON m.id = r.message_id
+     LEFT JOIN tickets t ON t.id = r.ticket_id
+     ORDER BY CASE r.status WHEN 'offen' THEN 0 ELSE 1 END, r.id DESC`
+  );
+  const openCount = (await db.get(`SELECT COUNT(*) AS c FROM reports WHERE status = 'offen'`)).c;
+  res.json({ reports, openCount });
+});
+
+app.post('/api/reports/:id/resolve', guard(['inhaber', 'bearbeiter']), async (req, res) => {
+  const rid = Number(req.params.id);
+  const rep = await db.get('SELECT * FROM reports WHERE id = ?', [rid]);
+  if (!rep) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
+  await db.run(`UPDATE reports SET status='erledigt' WHERE id = ?`, [rid]);
+  res.json({ ok: true });
+});
+
+app.post('/api/reports/:id/warn', guard(['inhaber', 'bearbeiter']), async (req, res) => {
+  const rid = Number(req.params.id);
+  const rep = await db.get('SELECT * FROM reports WHERE id = ?', [rid]);
+  if (!rep) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
+  await addWarning(rep.reported_user_id, req.user.id, rep.reason);
+  await db.run(`UPDATE reports SET status='erledigt' WHERE id = ?`, [rid]);
+  res.json({ ok: true });
+});
+
+app.get('/api/warnings', guard(['inhaber', 'bearbeiter']), async (req, res) => {
+  const warnings = await db.all(
+    `SELECT w.*, u.username AS user_name, b.username AS by_name
+     FROM warnings w
+     JOIN users u ON u.id = w.user_id
+     JOIN users b ON b.id = w.by_user_id
+     ORDER BY w.id DESC LIMIT 100`
+  );
+  res.json({ warnings });
+});
+
+app.post('/api/users/:id/warn', guard(['inhaber', 'bearbeiter']), async (req, res) => {
+  try {
+    const uid = Number(req.params.id);
+    const reason = String((req.body || {}).reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Bitte einen Grund für die Verwarnung angeben.' });
+    if (reason.length > 500) return res.status(400).json({ error: 'Grund zu lang (max. 500 Zeichen).' });
+    const target = await db.get('SELECT id FROM users WHERE id = ?', [uid]);
+    if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+    await addWarning(uid, req.user.id, reason);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[warn]', e);
+    res.status(500).json({ error: 'Serverfehler beim Verwarnen.' });
+  }
+});
+
+async function addWarning(userId, byUserId, reason) {
+  await db.run(
+    `INSERT INTO warnings (user_id, by_user_id, reason) VALUES (?,?,?)`,
+    [userId, byUserId, reason]
+  );
+}
+
 /* ------------------------------ Tickets ------------------------------ */
 
 const isStaff = (u) => u && ['inhaber', 'bearbeiter'].includes(u.role);
@@ -407,7 +496,7 @@ app.get('/api/tickets/:id/messages', guard(), async (req, res) => {
   const { t, error } = await loadTicketFor(req, res);
   if (error) return;
   const messages = await db.all(
-    `SELECT m.id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
+    `SELECT m.id, m.user_id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
      FROM ticket_messages m JOIN users u ON u.id = m.user_id
      WHERE m.ticket_id = ? ORDER BY m.id ASC`,
     [t.id]
@@ -437,7 +526,7 @@ app.post('/api/tickets/:id/messages', guard(), async (req, res) => {
   }
   const updated = await db.get('SELECT * FROM tickets WHERE id = ?', [t.id]);
   const messages = await db.all(
-    `SELECT m.id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
+    `SELECT m.id, m.user_id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
      FROM ticket_messages m JOIN users u ON u.id = m.user_id
      WHERE m.ticket_id = ? ORDER BY m.id ASC`,
     [t.id]
@@ -524,7 +613,7 @@ app.put('/api/tickets/:id', guard(), async (req, res) => {
 
   const updated = await db.get('SELECT * FROM tickets WHERE id = ?', [tid]);
   const messages = await db.all(
-    `SELECT m.id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
+    `SELECT m.id, m.user_id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
      FROM ticket_messages m JOIN users u ON u.id = m.user_id
      WHERE m.ticket_id = ? ORDER BY m.id ASC`,
     [tid]

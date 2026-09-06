@@ -36,6 +36,7 @@
       <button class="nav-link" data-tab="netzplan">Netzplan</button>
       <button class="nav-link" data-tab="linien">Linienübersicht</button>
       <button class="nav-link hidden" id="nav-tickets" data-tab="tickets">Tickets</button>
+      <button class="nav-link hidden" id="nav-admin" data-tab="admin">Admin<span id="admin-badge" class="nav-badge hidden"></span></button>
       <button class="nav-link hidden" id="nav-account" data-tab="account">Konto</button>
     </div>
 
@@ -126,12 +127,67 @@
         <h1>Shifts</h1>
         <p>Alle anstehenden Bus-Shifts mit Datum, Uhrzeit und Vorschaubild.</p>
       </div>
-      <button class="btn btn-primary hidden" id="btn-new-shift">+ Neue Schicht</button>
     </div>
-    <div class="toolbar">
-      <input class="input input-search" id="shift-search" type="search" placeholder="Schicht suchen …"/>
+    <div class="subnav" id="shifts-subnav">
+      <button class="chip active" data-shiftsub="list">🗓️ Alle Shifts</button>
+      <button class="chip hidden" data-shiftsub="create">➕ Shift erstellen</button>
     </div>
-    <div id="shifts-list" class="shift-grid"></div>
+    <div class="subpanel" id="shifts-list-panel">
+      <div class="toolbar">
+        <input class="input input-search" id="shift-search" type="search" placeholder="Schicht suchen …"/>
+      </div>
+      <div id="shifts-list" class="shift-grid"></div>
+    </div>
+    <div class="subpanel hidden" id="shifts-create-panel">
+      <div class="card form-card">
+        <form id="shift-form" class="form">
+          <div class="modal-head"><h2>Neue Schicht</h2><p class="muted">Lege einen neuen Bus-Shift für die Community an.</p></div>
+          <label class="field">
+            <span>Titel</span>
+            <input class="input" id="shift-title" type="text" maxlength="80" required placeholder="Z. B. Nachtschicht Linie 1"/>
+          </label>
+          <div class="triple">
+            <label class="field">
+              <span>Datum</span>
+              <input class="input" id="shift-date" type="date" required/>
+            </label>
+            <label class="field">
+              <span>Start</span>
+              <input class="input" id="shift-time-start" type="time" required/>
+            </label>
+            <label class="field">
+              <span>Ende</span>
+              <input class="input" id="shift-time-end" type="time"/>
+            </label>
+          </div>
+          <label class="field">
+            <span>Beschreibung</span>
+            <textarea class="input" id="shift-desc" rows="3" placeholder="Infos zu Route, Ablauf, Besonderheiten …"></textarea>
+          </label>
+          <div class="field">
+            <span>Bild</span>
+            <div class="img-tabs">
+              <button type="button" class="chip active" data-imgmode="gallery">📷 Aus Galerie</button>
+              <button type="button" class="chip" data-imgmode="upload">⬆️ Eigenes Bild</button>
+            </div>
+            <div id="imgmode-gallery">
+              <div id="shift-img-gallery" class="img-gallery"></div>
+            </div>
+            <div id="imgmode-upload" class="hidden">
+              <label class="dropzone" for="shift-file-input">
+                <input id="shift-file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden/>
+                <div class="dz-text" id="dz-text">Klick oder Datei hierher ziehen<br/><small>Wird automatisch komprimiert und in der Datenbank gespeichert.</small></div>
+              </label>
+              <img id="shift-upload-preview" class="upload-preview hidden" alt="Vorschau"/>
+            </div>
+          </div>
+          <div class="row gap">
+            <button class="btn btn-ghost btn-full" type="button" data-shiftsub="list">Abbrechen</button>
+            <button class="btn btn-primary btn-full" type="submit">Schicht veröffentlichen</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </section>
 
   <!-- ===================== NETZPLAN ===================== -->
@@ -185,18 +241,63 @@
         <h1>Tickets</h1>
         <p id="tickets-subline">Erstelle ein Ticket – unser Team kümmert sich.</p>
       </div>
-      <button class="btn btn-primary" id="btn-new-ticket">+ Neues Ticket</button>
     </div>
-    <div class="ticket-toolbar">
-      <div class="chips" id="ticket-filters">
-        <button class="chip active" data-filter="alle">Alle</button>
-        <button class="chip" data-filter="offen">Offen</button>
-        <button class="chip" data-filter="in_arbeit">In Arbeit</button>
-        <button class="chip" data-filter="geschlossen">Geschlossen</button>
+    <div class="subnav" id="tickets-subnav">
+      <button class="chip" data-ticketsub="dashboard">📊 Dashboard</button>
+      <button class="chip" data-ticketsub="create">➕ Ticket erstellen</button>
+    </div>
+    <div class="subpanel" id="tickets-dashboard">
+      <div class="ticket-toolbar">
+        <div class="chips" id="ticket-filters">
+          <button class="chip active" data-filter="alle">Alle</button>
+          <button class="chip" data-filter="offen">Offen</button>
+          <button class="chip" data-filter="in_arbeit">In Arbeit</button>
+          <button class="chip" data-filter="geschlossen">Geschlossen</button>
+        </div>
+        <input class="input ticket-search" id="ticket-search" type="search" placeholder="Suchen (Thema, Nummer, Autor) …"/>
       </div>
-      <input class="input ticket-search" id="ticket-search" type="search" placeholder="Suchen (Thema, Nummer, Autor) …"/>
+      <div id="tickets-view"></div>
     </div>
-    <div id="tickets-view"></div>
+    <div class="subpanel hidden" id="tickets-create">
+      <div class="card form-card">
+        <form id="ticket-form" class="form">
+          <div class="modal-head"><h2>Neues Ticket</h2><p class="muted">Beschreibe dein Anliegen – das Team meldet sich.</p></div>
+          <label class="field">
+            <span>Thema</span>
+            <input class="input" id="ticket-subject" type="text" maxlength="90" required placeholder="Z. B. Bewerbung als Busfahrer"/>
+          </label>
+          <div class="row gap">
+            <label class="field flex1">
+              <span>Kategorie</span>
+              <select class="input" id="ticket-category">
+                <option value="frage">❓ Frage</option>
+                <option value="problem">⚠️ Problem / Bug</option>
+                <option value="vorschlag">💡 Vorschlag</option>
+                <option value="bewerbung">📝 Bewerbung</option>
+                <option value="sonstiges">📦 Sonstiges</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Priorität</span>
+              <select class="input" id="ticket-priority">
+                <option value="niedrig">Niedrig</option>
+                <option value="normal" selected>Normal</option>
+                <option value="hoch">Hoch</option>
+              </select>
+            </label>
+          </div>
+          <label class="field">
+            <span>Beschreibung</span>
+            <textarea class="input" id="ticket-desc" rows="4" placeholder="Erkläre dein Anliegen so genau wie möglich …"></textarea>
+          </label>
+          <button class="btn btn-primary btn-full" type="submit">Ticket erstellen</button>
+        </form>
+      </div>
+      <div class="my-tickets">
+        <div class="section-head"><h2>Meine Tickets</h2><p id="my-tickets-sub" class="muted"></p></div>
+        <div id="my-tickets-list"></div>
+      </div>
+    </div>
     <div id="ticket-chat" class="ticket-chat hidden">
       <div class="chat-head">
         <button class="icon-btn" id="chat-back" title="Zurück">
@@ -220,6 +321,48 @@
         <textarea id="chat-text" rows="2" placeholder="Nachricht schreiben …"></textarea>
         <button class="btn btn-primary" id="chat-send">Senden</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== ADMIN (Staff) ===================== -->
+  <section id="tab-admin" class="tab">
+    <div class="page-head">
+      <div>
+        <h1>Admin</h1>
+        <p>Eingehende Meldungen und Verwarnungen.</p>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <div class="section-head">
+        <h2>🛡️ Meldungen</h2>
+        <p class="muted" id="admin-reports-sub">Offene Meldungen stehen oben.</p>
+      </div>
+      <div id="admin-reports" class="admin-list"></div>
+    </div>
+
+    <div class="admin-section">
+      <div class="section-head"><h2>⚠️ Verwarnung vergeben</h2></div>
+      <div class="card form-card">
+        <form id="warn-form" class="form">
+          <div class="row gap">
+            <label class="field flex1">
+              <span>Spieler</span>
+              <select class="input" id="warn-user" required></select>
+            </label>
+            <label class="field flex2">
+              <span>Grund</span>
+              <input class="input" id="warn-reason" type="text" maxlength="500" required placeholder="Z. B. Beleidigung im Chat"/>
+            </label>
+          </div>
+          <button class="btn btn-primary btn-full" type="submit">Verwarnen</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <div class="section-head"><h2>📜 Verwarnungen</h2></div>
+      <div id="admin-warnings" class="admin-list"></div>
     </div>
   </section>
 
@@ -291,85 +434,6 @@
 <!-- ===================== MODALS ===================== -->
 <div id="modal-root"></div>
 
-<div class="modal hidden" id="modal-auth">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close icon-btn" data-close="modal-auth">✕</button>
-    <div class="modal-head">
-      <h2 id="auth-title">Willkommen zurück</h2>
-      <p class="muted" id="auth-subline">Melde dich an oder erstelle ein Konto.</p>
-    </div>
-
-    <button class="btn btn-discord btn-full" id="btn-discord-auth">
-      <svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.8 13.8 0 0 0-.64 1.28 18.3 18.3 0 0 0-5.5 0 13.5 13.5 0 0 0-.64-1.28 19.7 19.7 0 0 0-4.93 1.51C.53 9.05-.32 13.58.1 18.05A19.9 19.9 0 0 0 7.08 21c.5-.67.94-1.38 1.31-2.13a12.8 12.8 0 0 1-2.05-1 15 15 0 0 0 1.6-1.3 11.4 11.4 0 0 0 9.83 0 14.6 14.6 0 0 0 1.6 1.3 12.8 12.8 0 0 1-2.05 1.02A13.4 13.4 0 0 0 18 21a19.9 19.9 0 0 0 6.9-2.95c.5-5.18-.84-9.67-3.58-13.68ZM8.02 15.33c-1.35 0-2.45-1.24-2.45-2.76s1.08-2.76 2.45-2.76 2.47 1.24 2.45 2.76c0 1.52-1.08 2.76-2.45 2.76Zm7.96 0c-1.35 0-2.45-1.24-2.45-2.76s1.08-2.76 2.45-2.76 2.46 1.24 2.45 2.76c0 1.52-1.09 2.76-2.45 2.76Z"/></svg>
-      Mit Discord anmelden
-    </button>
-
-    <div class="divider"><span>oder</span></div>
-
-    <form id="auth-form" class="form">
-      <label class="field">
-        <span>E-Mail</span>
-        <input class="input" id="auth-email" type="email" required placeholder="deine@email.de" autocomplete="email"/>
-      </label>
-      <label class="field hidden" id="auth-username-field">
-        <span>Nutzername</span>
-        <input class="input" id="auth-username" type="text" minlength="2" maxlength="24" placeholder="Dein Spitzname" autocomplete="username"/>
-      </label>
-      <label class="field">
-        <span>Passwort</span>
-        <input class="input" id="auth-password" type="password" minlength="6" required placeholder="••••••••" autocomplete="current-password"/>
-      </label>
-      <button class="btn btn-primary btn-full" id="auth-submit" type="submit">Anmelden</button>
-    </form>
-
-    <div class="auth-switch">
-      <span id="auth-switch-text">Noch kein Konto?</span>
-      <button class="btn-link" id="auth-toggle">Registrieren</button>
-    </div>
-    <p class="auth-note muted">Mit der Registrierung stimmst du unserem respektvollen Miteinander zu. Rollen (Besucher, Bearbeiter, Inhaber) werden vom Team vergeben.</p>
-  </div>
-</div>
-
-<div class="modal hidden" id="modal-ticket">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close icon-btn" data-close="modal-ticket">✕</button>
-    <div class="modal-head"><h2>Neues Ticket</h2><p class="muted">Beschreibe dein Anliegen – das Team meldet sich.</p></div>
-    <form id="ticket-form" class="form">
-      <label class="field">
-        <span>Thema</span>
-        <input class="input" id="ticket-subject" type="text" maxlength="90" required placeholder="Z. B. Bewerbung als Busfahrer"/>
-      </label>
-      <div class="row gap">
-        <label class="field flex1">
-          <span>Kategorie</span>
-          <select class="input" id="ticket-category">
-            <option value="frage">❓ Frage</option>
-            <option value="problem">⚠️ Problem / Bug</option>
-            <option value="vorschlag">💡 Vorschlag</option>
-            <option value="bewerbung">📝 Bewerbung</option>
-            <option value="sonstiges">📦 Sonstiges</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Priorität</span>
-          <select class="input" id="ticket-priority">
-            <option value="niedrig">Niedrig</option>
-            <option value="normal" selected>Normal</option>
-            <option value="hoch">Hoch</option>
-          </select>
-        </label>
-      </div>
-      <label class="field">
-        <span>Beschreibung</span>
-        <textarea class="input" id="ticket-desc" rows="4" placeholder="Erkläre dein Anliegen so genau wie möglich …"></textarea>
-      </label>
-      <button class="btn btn-primary btn-full" type="submit">Ticket erstellen</button>
-    </form>
-  </div>
-</div>
-
 <div class="modal hidden" id="modal-edit-ticket">
   <div class="modal-backdrop"></div>
   <div class="modal-card">
@@ -416,52 +480,28 @@
   </div>
 </div>
 
-<div class="modal hidden" id="modal-shift">
+<div class="modal hidden" id="modal-report">
   <div class="modal-backdrop"></div>
-  <div class="modal-card modal-card-lg">
-    <button class="modal-close icon-btn" data-close="modal-shift">✕</button>
-    <div class="modal-head"><h2>Neue Schicht</h2><p class="muted">Lege einen neuen Bus-Shift für die Community an.</p></div>
-    <form id="shift-form" class="form">
+  <div class="modal-card">
+    <button class="modal-close icon-btn" data-close="modal-report">✕</button>
+    <div class="modal-head"><h2>Nachricht melden</h2><p class="muted" id="report-target-text">Melde diese Nachricht an das Team.</p></div>
+    <form id="report-form" class="form">
       <label class="field">
-        <span>Titel</span>
-        <input class="input" id="shift-title" type="text" maxlength="80" required placeholder="Z. B. Nachtschicht Linie 1"/>
+        <span>Grund</span>
+        <select class="input" id="report-reason" required>
+          <option value="">– Bitte wählen –</option>
+          <option value="beleidigung">Beleidigung / Ungesprächige Sprache</option>
+          <option value="spam">Spam / Werbung</option>
+          <option value="betrug">Betrug / Scam</option>
+          <option value="hacking">Cheating / Hacking</option>
+          <option value="sonstiges">Sonstiges</option>
+        </select>
       </label>
-      <div class="triple">
-        <label class="field">
-          <span>Datum</span>
-          <input class="input" id="shift-date" type="date" required/>
-        </label>
-        <label class="field">
-          <span>Start</span>
-          <input class="input" id="shift-time-start" type="time" required/>
-        </label>
-        <label class="field">
-          <span>Ende</span>
-          <input class="input" id="shift-time-end" type="time"/>
-        </label>
-      </div>
       <label class="field">
-        <span>Beschreibung</span>
-        <textarea class="input" id="shift-desc" rows="3" placeholder="Infos zu Route, Ablauf, Besonderheiten …"></textarea>
+        <span>Zusätzliche Informationen (optional)</span>
+        <textarea class="input" id="report-details" rows="3" maxlength="1000" placeholder="Beschreibe kurz, was passiert ist …"></textarea>
       </label>
-      <div class="field">
-        <span>Bild</span>
-        <div class="img-tabs">
-          <button type="button" class="chip active" data-imgmode="gallery">📷 Aus Galerie</button>
-          <button type="button" class="chip" data-imgmode="upload">⬆️ Eigenes Bild</button>
-        </div>
-        <div id="imgmode-gallery">
-          <div id="shift-img-gallery" class="img-gallery"></div>
-        </div>
-        <div id="imgmode-upload" class="hidden">
-          <label class="dropzone" for="shift-file-input">
-            <input id="shift-file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden/>
-            <div class="dz-text" id="dz-text">Klick oder Datei hierher ziehen<br/><small>Wird automatisch komprimiert und in der Datenbank gespeichert.</small></div>
-          </label>
-          <img id="shift-upload-preview" class="upload-preview hidden" alt="Vorschau"/>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-full" type="submit">Schicht veröffentlichen</button>
+      <button class="btn btn-primary btn-full" type="submit">Melden</button>
     </form>
   </div>
 </div>
@@ -471,6 +511,46 @@
   <div class="modal-card modal-card-image">
     <img id="image-view" src="" alt="Bild"/>
     <button class="modal-close icon-btn" data-close="modal-image">✕</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="modal-auth">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <button class="modal-close icon-btn" data-close="modal-auth">✕</button>
+    <div class="modal-head">
+      <h2 id="auth-title">Willkommen zurück</h2>
+      <p class="muted" id="auth-subline">Melde dich an oder erstelle ein Konto.</p>
+    </div>
+
+    <button class="btn btn-discord btn-full" id="btn-discord-auth">
+      <svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.8 13.8 0 0 0-.64 1.28 18.3 18.3 0 0 0-5.5 0 13.5 13.5 0 0 0-.64-1.28 19.7 19.7 0 0 0-4.93 1.51C.53 9.05-.32 13.58.1 18.05A19.9 19.9 0 0 0 7.08 21c.5-.67.94-1.38 1.31-2.13a12.8 12.8 0 0 1-2.05-1 15 15 0 0 0 1.6-1.3 11.4 11.4 0 0 0 9.83 0 14.6 14.6 0 0 0 1.6 1.3 12.8 12.8 0 0 1-2.05 1.02A13.4 13.4 0 0 0 18 21a19.9 19.9 0 0 0 6.9-2.95c.5-5.18-.84-9.67-3.58-13.68ZM8.02 15.33c-1.35 0-2.45-1.24-2.45-2.76s1.08-2.76 2.45-2.76 2.47 1.24 2.45 2.76c0 1.52-1.08 2.76-2.45 2.76Zm7.96 0c-1.35 0-2.45-1.24-2.45-2.76s1.08-2.76 2.45-2.76 2.46 1.24 2.45 2.76c0 1.52-1.09 2.76-2.45 2.76Z"/></svg>
+      Mit Discord anmelden
+    </button>
+
+    <div class="divider"><span>oder</span></div>
+
+    <form id="auth-form" class="form">
+      <label class="field">
+        <span>E-Mail</span>
+        <input class="input" id="auth-email" type="email" required placeholder="deine@email.de" autocomplete="email"/>
+      </label>
+      <label class="field hidden" id="auth-username-field">
+        <span>Nutzername</span>
+        <input class="input" id="auth-username" type="text" minlength="2" maxlength="24" placeholder="Dein Spitzname" autocomplete="username"/>
+      </label>
+      <label class="field">
+        <span>Passwort</span>
+        <input class="input" id="auth-password" type="password" minlength="6" required placeholder="••••••••" autocomplete="current-password"/>
+      </label>
+      <button class="btn btn-primary btn-full" id="auth-submit" type="submit">Anmelden</button>
+    </form>
+
+    <div class="auth-switch">
+      <span id="auth-switch-text">Noch kein Konto?</span>
+      <button class="btn-link" id="auth-toggle">Registrieren</button>
+    </div>
+    <p class="auth-note muted">Mit der Registrierung stimmst du unserem respektvollen Miteinander zu. Rollen (Besucher, Bearbeiter, Inhaber) werden vom Team vergeben.</p>
   </div>
 </div>
 

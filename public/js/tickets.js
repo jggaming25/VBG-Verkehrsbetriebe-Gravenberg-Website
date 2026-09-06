@@ -4,6 +4,8 @@ VBG.tickets = (function () {
   let currentTicket = null;
   let currentMessages = [];
   let pendingAttachment = null;
+  let pendingReport = null;
+  let currentSub = null;
   const filters = { status: 'alle', q: '' };
 
   const ticketNr = (t) => 'VBG-' + String(t.id).padStart(4, '0');
@@ -63,22 +65,39 @@ VBG.tickets = (function () {
     });
   }
 
+  function myTickets() {
+    const me = VBG.state.user && VBG.state.user.id;
+    return tickets.filter((t) => t.user_id === me);
+  }
+
   async function load() {
     const data = await API.get('/api/tickets');
     tickets = data.tickets || [];
-    const sub = document.getElementById('tickets-subline');
     const staff = VBG.isStaff(VBG.state.user.role);
-    sub.textContent = staff
+    const dashChip = document.querySelector('#tickets-subnav .chip[data-ticketsub="dashboard"]');
+    if (dashChip) dashChip.classList.toggle('hidden', !staff);
+    document.getElementById('tickets-subline').textContent = staff
       ? `${tickets.length} Ticket(s) insgesamt · ${data.openCount} offen – übernimm ein Ticket!`
       : (data.openCount ? `${data.openCount} offene(s) Ticket(s) · unser Team meldet sich.` : 'Erstelle ein Ticket – unser Team kümmert sich.');
+    if (!currentSub) currentSub = staff ? 'dashboard' : 'create';
+    showSub(currentSub);
     render();
+  }
+
+  function showSub(name) {
+    currentSub = name;
+    document.querySelectorAll('#tickets-subnav .chip').forEach((c) => c.classList.toggle('active', c.dataset.ticketsub === name));
+    const staff = VBG.isStaff(VBG.state.user.role);
+    document.getElementById('tickets-dashboard').classList.toggle('hidden', !staff || name !== 'dashboard');
+    document.getElementById('tickets-create').classList.toggle('hidden', name !== 'create');
+    if (name === 'dashboard') render();
+    if (name === 'create') renderMyTickets();
   }
 
   function render() {
     const view = document.getElementById('tickets-view');
-    view.classList.remove('hidden');
     document.getElementById('ticket-chat').classList.add('hidden');
-    currentTicket = null;
+    if (!currentSub) return;
 
     document.querySelectorAll('#ticket-filters .chip').forEach((c) => {
       c.classList.toggle('active', c.dataset.filter === filters.status);
@@ -86,6 +105,7 @@ VBG.tickets = (function () {
 
     const list = filteredTickets();
     const hasFilter = filters.status !== 'alle' || filters.q.trim();
+    view.innerHTML = '';
     if (!list.length) {
       view.innerHTML = hasFilter
         ? `<div class="empty-state"><div class="big">🔎</div><p>Keine Treffer für die aktuelle Filter-/Sucheinstellung.</p></div>`
@@ -93,6 +113,17 @@ VBG.tickets = (function () {
       return;
     }
     view.innerHTML = `<div class="ticket-list">${list.map(ticketItem).join('')}</div>`;
+  }
+
+  function renderMyTickets() {
+    const list = myTickets();
+    document.getElementById('my-tickets-sub').textContent = list.length + ' Ticket(s) insgesamt';
+    const wrap = document.getElementById('my-tickets-list');
+    if (!list.length) {
+      wrap.innerHTML = `<div class="empty-state"><div class="big">🎫</div><p>Noch keine eigenen Tickets.</p><p class="muted">Sobald du ein Ticket erstellst, findest du es hier.</p></div>`;
+      return;
+    }
+    wrap.innerHTML = `<div class="ticket-list">${list.map(ticketItem).join('')}</div>`;
   }
 
   function messageHtml(m) {
@@ -109,6 +140,7 @@ VBG.tickets = (function () {
           <b>${esc(m.username)}</b>
           ${isStaffMsg ? `<span class="msg-role role-badge role-${esc(m.role)}">${esc(VBG.labels.roles[m.role] || m.role)}</span>` : ''}
           <span class="msg-time">${esc(fmtDateTime(m.created_at)).replace(', ', ' · ')}</span>
+          ${isMine ? '' : `<span class="msg-report" title="Nachricht melden" data-reportmsg="${m.id}" data-reportuser="${m.user_id}" data-reportname="${esc(m.username)}">⚑</span>`}
         </div>
         ${m.message ? `<p>${esc(m.message)}</p>` : ''}
         ${m.attachment ? `<a href="${m.attachment}" target="_blank" rel="noopener"><img class="msg-img" src="${m.attachment}" alt="Anhang"/></a>` : ''}
@@ -139,16 +171,18 @@ VBG.tickets = (function () {
     box.querySelector('.attach-remove').addEventListener('click', (e) => { e.stopPropagation(); pendingAttachment = null; renderAttachmentPreview(); renderComposer(); });
   }
 
-  function openTicketFlow(id) {
-    const chat = document.getElementById('ticket-chat');
-    const viewwrap = chat.parentElement;
+  function showTicketsTab() {
     document.querySelectorAll('.tab').forEach((s) => s.classList.add('hidden'));
-    const tab = document.getElementById('tab-tickets');
-    tab.classList.remove('hidden');
-    tab.classList.add('active');
+    document.getElementById('tab-tickets').classList.remove('hidden');
+    document.getElementById('tab-tickets').classList.add('active');
     document.querySelectorAll('.nav-link').forEach((n) => n.classList.toggle('active', n.dataset.tab === 'tickets'));
-    document.getElementById('tickets-view').classList.add('hidden');
-    chat.classList.remove('hidden');
+  }
+
+  function openTicketFlow(id) {
+    showTicketsTab();
+    document.getElementById('tickets-dashboard').classList.add('hidden');
+    document.getElementById('tickets-create').classList.add('hidden');
+    document.getElementById('ticket-chat').classList.remove('hidden');
     openTicket(id);
   }
 
@@ -206,8 +240,6 @@ VBG.tickets = (function () {
 
     renderMessages();
     renderComposer();
-    document.getElementById('tickets-view').classList.add('hidden');
-    document.getElementById('ticket-chat').classList.remove('hidden');
     document.getElementById('chat-text').focus();
   }
 
@@ -228,10 +260,17 @@ VBG.tickets = (function () {
         renderMessages();
         renderComposer();
         document.getElementById('chat-subject').textContent = currentTicket.subject;
-        document.getElementById('tickets-view').classList.add('hidden');
+        showTicketsTab();
+        document.getElementById('tickets-dashboard').classList.add('hidden');
+        document.getElementById('tickets-create').classList.add('hidden');
         document.getElementById('ticket-chat').classList.remove('hidden');
       }
     } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function backToList() {
+    document.getElementById('ticket-chat').classList.add('hidden');
+    load();
   }
 
   function openEditModal() {
@@ -296,10 +335,11 @@ VBG.tickets = (function () {
     }
   }
 
-  async function openNew() {
+  function resetNewForm() {
     document.getElementById('ticket-subject').value = '';
+    document.getElementById('ticket-category').value = 'frage';
+    document.getElementById('ticket-priority').value = 'normal';
     document.getElementById('ticket-desc').value = '';
-    openModal('modal-ticket');
   }
 
   async function submitNew(e) {
@@ -314,10 +354,43 @@ VBG.tickets = (function () {
     try {
       const data = await API.post('/api/tickets', { subject, category, description, priority });
       toast('Ticket erstellt! Unser Team kümmert sich.', 'ok');
-      closeModal('modal-ticket');
-      await load();
+      resetNewForm();
       await VBG.notifyNewTicket(subject, data.id, priority);
       openTicketFlow(data.id);
+    } catch (err) {
+      toast(err.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function onSwitchToCreate() {
+    resetNewForm();
+    if (currentSub !== 'create') showSub('create');
+  }
+
+  function openReport(messageId, userId, name) {
+    if (!currentTicket) { toast('Bitte zuerst ein Ticket öffnen.', 'err'); return; }
+    pendingReport = { ticket_id: currentTicket.id, message_id: messageId, reported_user_id: userId };
+    document.getElementById('report-target-text').textContent = 'Meldung an das Team senden – Nachricht von ' + name + '.';
+    document.getElementById('report-form').reset();
+    openModal('modal-report');
+  }
+
+  async function submitReport(e) {
+    e.preventDefault();
+    if (!pendingReport) { toast('Bitte zuerst eine Nachricht auswählen.', 'err'); return; }
+    const reason = document.getElementById('report-reason').value;
+    if (!reason) { toast('Bitte einen Grund wählen.', 'err'); return; }
+    const details = document.getElementById('report-details').value.trim();
+    const btn = document.getElementById('report-form').querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      await API.post('/api/reports', { ...pendingReport, reason, details });
+      toast('Danke! Deine Meldung wurde an das Team gesendet.', 'ok');
+      closeModal('modal-report');
+      pendingReport = null;
+      if (VBG.state.user && VBG.isStaff(VBG.state.user.role)) VBG.admin.loadAdmin().catch(() => {});
     } catch (err) {
       toast(err.message, 'err');
     } finally {
@@ -339,7 +412,17 @@ VBG.tickets = (function () {
   }
 
   function bind() {
+    document.querySelector('#tickets-subnav').addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-ticketsub]');
+      if (!chip) return;
+      if (chip.dataset.ticketsub === 'create') onSwitchToCreate();
+      else showSub('dashboard');
+    });
     document.getElementById('tickets-view').addEventListener('click', (e) => {
+      const item = e.target.closest('[data-ticket]');
+      if (item) openTicketFlow(Number(item.dataset.ticket));
+    });
+    document.getElementById('my-tickets-list').addEventListener('click', (e) => {
       const item = e.target.closest('[data-ticket]');
       if (item) openTicketFlow(Number(item.dataset.ticket));
     });
@@ -353,17 +436,27 @@ VBG.tickets = (function () {
       filters.q = e.target.value;
       render();
     });
-    document.getElementById('btn-new-ticket').addEventListener('click', openNew);
     document.getElementById('ticket-form').addEventListener('submit', submitNew);
     document.getElementById('ticket-edit-form').addEventListener('submit', submitEdit);
+    document.getElementById('report-form').addEventListener('submit', submitReport);
     document.getElementById('chat-send').addEventListener('click', sendMessage);
     document.getElementById('chat-text').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     document.getElementById('chat-attach').addEventListener('click', () => document.getElementById('chat-file').click());
     document.getElementById('chat-file').addEventListener('change', onFilePicked);
-    document.getElementById('chat-back').addEventListener('click', () => { document.getElementById('ticket-chat').classList.add('hidden'); document.getElementById('tickets-view').classList.remove('hidden'); load(); });
+    document.getElementById('chat-back').addEventListener('click', backToList);
+    document.getElementById('chat-messages').addEventListener('click', (e) => {
+      const rep = e.target.closest('.msg-report');
+      if (rep) {
+        e.stopPropagation();
+        openReport(Number(rep.dataset.reportmsg), Number(rep.dataset.reportuser), rep.dataset.reportname);
+        return;
+      }
+      const imgLink = e.target.closest('a[href^="data:image"]');
+      if (imgLink) openImageView(imgLink.href);
+    });
   }
 
-  return { bind, load, render };
+  return { bind, load, render, backToList };
 })();

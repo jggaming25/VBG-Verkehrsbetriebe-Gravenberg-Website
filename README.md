@@ -11,14 +11,15 @@ Website für das **fiktive Roblox Bus-RP-Game** „VBG Verkehrsbetriebe Gravenbe
 | Bereich | Beschreibung |
 |---|---|
 | **Start / Landing** | Hero mit `IMGs/Bild1.png` als breitem Hintergrund, restliche Bilder als Vorschaugalerie, Tags #Roblox #Bus #Fiktiv |
-| **Shifts** | Alle Shifts mit Datum, Uhrzeit + Vorschaubild. **Inhaber** legen Shifts an – Bild aus der IMG-Galerie **oder eigener Upload** (wird im Browser komprimiert und in Turso gespeichert) |
+| **Shifts** | Alle Shifts mit Datum, Uhrzeit + Vorschaubild. Untertabs **„Alle Shifts“ / „Shift erstellen“** (Shift erstellen nur für **Inhaber**). Bild aus der IMG-Galerie **oder eigener Upload** (wird im Browser komprimiert und in Turso gespeichert) |
 | **Netzplan / Linienübersicht** | „Coming Soon“ mit deutschen **und** englischen Texten |
-| **Tickets** | Nur nach Anmeldung sichtbar. Discord-artiger Chat mit **Ticketnummern** (VBG-0001), Filter (Alle/Offen/In Arbeit/Geschlossen) + Suche, **Bearbeiten** (Thema, Kategorie, Priorität, Fälligkeitsdatum, Beschreibung – wird protokolliert), Bild-**Anhänge**, „Übernehmen“/„Abgeben“, Prioritäten, Kategorien, Schließen/Wieder öffnen, Systemmeldungen |
+| **Tickets** | Nur nach Anmeldung sichtbar. Untertabs **„Dashboard“** (nur Staff) + **„Ticket erstellen“** (jeder) mit **„Meine Tickets“**. Besucher sehen nur „Ticket erstellen“. Discord-artiger Chat mit **Ticketnummern** (VBG-0001), Filter (Alle/Offen/In Arbeit/Geschlossen) + Suche, **Bearbeiten** (Thema, Kategorie, Priorität, Fälligkeitsdatum, Beschreibung – wird protokolliert), Bild-**Anhänge**, „Übernehmen“/„Abgeben“, Prioritäten, Kategorien, Schließen/Wieder öffnen, Systemmeldungen, **⚑-Melden** fremder Nachrichten |
+| **Admin** | Nur für Staff sichtbar: **Meldungen** (offene zuerst, „als erledigt markieren“ oder direkt **verwarnen**), **Verwarnungen** vergeben/Liste. Badge mit offenen Meldungen im Nav |
 | **Konto / Kontoübersicht** | Profil, E-Mail-Verifizierung, Rollenübersicht aller Spieler. **Inhaber** können Rollen vergeben (Besucher/Bearbeiter/Inhaber) |
 
 ### Rollen
-- **Besucher** – kann Shifts sehen und Tickets erstellen
-- **Bearbeiter** (Staff) – kann Tickets übernehmen, beantworten und schließen
+- **Besucher** – kann Shifts sehen und Tickets erstellen; sieht im Tickets-Tab nur „Ticket erstellen“ + „Meine Tickets“
+- **Bearbeiter** (Staff) – zusätzlich: Ticket-Dashboard, Meldungen bearbeiten, Verwarnungen aussprechen
 - **Inhaber** (Owner) – zusätzlich: Rollen vergeben, Shifts anlegen/löschen
 
 Die E-Mails **`janngenzmann@gmail.com`** und **`platzhalter1@gmail.com`** werden automatisch als **Inhaber** registriert. *(Beide sind über die Server-Variable `OWNER_EMAILS` änderbar.)*
@@ -161,6 +162,8 @@ VBG Website/
 **Shifts:** `GET /api/shifts` · `POST /api/shifts` (Inhaber) · `DELETE /api/shifts/:id` (Inhaber) · `GET /api/images`
 
 **Tickets:** `GET /api/tickets` · `POST /api/tickets` · `GET /api/tickets/:id/messages` · `POST /api/tickets/:id/messages` · `PUT /api/tickets/:id` · `POST /api/tickets/:id/claim` · `.../unclaim` · `.../close` · `.../reopen`
+
+**Meldungen & Verwarnungen:** `POST /api/reports` (alle, kein Selbstmelden) · `GET /api/reports` (Staff) · `POST /api/reports/:id/resolve` (Staff) · `POST /api/reports/:id/warn` (Staff, verwarnt + erledigt) · `GET /api/warnings` (Staff) · `POST /api/users/:id/warn` (Staff)
 
 > **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Erlaubt für **Ersteller**, **zugewiesenen Bearbeiter** und **Inhaber**. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt.
 > **Nachrichten:** optional `attachment` (Base64-Daten-URL, max. ~8 MB pro Bild, wird im Browser auf 1200 px komprimiert).

@@ -86,6 +86,28 @@ async function init() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reported_user_id INTEGER NOT NULL REFERENCES users(id),
+      reporter_user_id INTEGER NOT NULL REFERENCES users(id),
+      ticket_id INTEGER REFERENCES tickets(id),
+      message_id INTEGER REFERENCES ticket_messages(id),
+      reason TEXT NOT NULL,
+      details TEXT,
+      status TEXT NOT NULL DEFAULT 'offen',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warnings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      by_user_id INTEGER NOT NULL REFERENCES users(id),
+      reason TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
 
   // Migrationen für ältere Schemas
   if (await hasColumn('users', 'password_hash') && !await hasColumn('users', 'discord_id')) {

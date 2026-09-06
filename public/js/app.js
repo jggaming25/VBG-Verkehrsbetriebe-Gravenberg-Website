@@ -3,7 +3,7 @@
   const state = (VBG.state = { user: null, authMode: 'login' });
 
   const $ = (id) => document.getElementById(id);
-  const TABS = ['start', 'shifts', 'netzplan', 'linien', 'tickets', 'account'];
+  const TABS = ['start', 'shifts', 'netzplan', 'linien', 'tickets', 'admin', 'account'];
 
   /* ------------------------------ Toasts / Modals ------------------------------ */
 
@@ -37,6 +37,8 @@
 
   function showTab(name) {
     if (name === 'tickets' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
+    if (name === 'admin' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
+    if (name === 'admin' && !VBG.isStaff(state.user.role)) { toast('Keine Berechtigung für den Admin-Bereich.', 'err'); return; }
     if (name === 'account' && !state.user) { openModal('modal-auth'); return; }
     TABS.forEach((t) => {
       $('tab-' + t).classList.toggle('active', t === name);
@@ -47,6 +49,7 @@
     if (name === 'shifts') VBG.shifts.load().catch((e) => toast(e.message, 'err'));
     if (name === 'tickets') VBG.tickets.load().catch((e) => toast(e.message, 'err'));
     if (name === 'account') renderAccount();
+    if (name === 'admin') VBG.admin.loadAdmin().catch((e) => toast(e.message, 'err'));
   }
   window.showTab = showTab;
 
@@ -163,9 +166,11 @@
 
   function updateAuthUI() {
     const logged = !!state.user;
+    const staff = logged && VBG.isStaff(state.user.role);
     $('auth-buttons').classList.toggle('hidden', logged);
     $('user-chip').classList.toggle('hidden', !logged);
     $('nav-tickets').classList.toggle('hidden', !logged);
+    $('nav-admin').classList.toggle('hidden', !staff);
     $('nav-account').classList.toggle('hidden', !logged);
     if (logged) {
       $('user-name').textContent = state.user.username;
@@ -176,6 +181,7 @@
     } else {
       $('btn-hero-ticket').textContent = 'Anmelden & Support-Ticket';
     }
+    if (staff) VBG.admin.loadAdmin().catch(() => {});
   }
 
   /* ------------------------------ E-Mail (EmailJS) ------------------------------ */

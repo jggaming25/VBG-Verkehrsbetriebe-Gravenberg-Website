@@ -29,12 +29,17 @@ VBG.shifts = (function () {
     </article>`;
   }
 
+  function showSub(name) {
+    document.querySelectorAll('#shifts-subnav .chip').forEach((c) => c.classList.toggle('active', c.dataset.shiftsub === name));
+    document.getElementById('shifts-list-panel').classList.toggle('hidden', name !== 'list');
+    document.getElementById('shifts-create-panel').classList.toggle('hidden', name !== 'create');
+  }
+
   async function load() {
     const data = await API.get('/api/shifts');
     shifts = data.shifts || [];
-    if (VBG.state && VBG.state.user && VBG.state.user.role === 'inhaber') {
-      document.getElementById('btn-new-shift').classList.remove('hidden');
-    }
+    const createChip = document.querySelector('#shifts-subnav .chip[data-shiftsub="create"]');
+    if (createChip) createChip.classList.toggle('hidden', !(VBG.state && VBG.state.user && VBG.state.user.role === 'inhaber'));
     render();
   }
 
@@ -50,7 +55,7 @@ VBG.shifts = (function () {
     wrap.innerHTML = list.map(shiftCard).join('');
   }
 
-  async function openCreate() {
+  function showCreate() {
     uploadImage = null;
     selectedGallery = '/IMGs/Bild1.png';
     document.getElementById('shift-title').value = '';
@@ -60,10 +65,23 @@ VBG.shifts = (function () {
     document.getElementById('shift-desc').value = '';
     document.getElementById('shift-file-input').value = '';
     setGalleryMode('gallery');
-    const data = await API.get('/api/images');
-    galleryImages = data.images || [];
-    renderGallery();
-    openModal('modal-shift');
+    const prev = document.getElementById('shift-upload-preview');
+    prev.src = '';
+    prev.classList.add('hidden');
+    resetDropzone();
+    loadGallery();
+    showSub('create');
+  }
+
+  async function loadGallery() {
+    try {
+      const data = await API.get('/api/images');
+      galleryImages = data.images || [];
+      renderGallery();
+    } catch (e) {
+      galleryImages = [];
+      renderGallery();
+    }
   }
 
   function renderGallery() {
@@ -126,7 +144,7 @@ VBG.shifts = (function () {
     try {
       await API.post('/api/shifts', s);
       toast('Schicht veröffentlicht!', 'ok');
-      closeModal('modal-shift');
+      showSub('list');
       load();
     } catch (err) {
       toast(err.message, 'err');
@@ -147,7 +165,12 @@ VBG.shifts = (function () {
   }
 
   function bind() {
-    document.getElementById('btn-new-shift').addEventListener('click', openCreate);
+    document.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-shiftsub]');
+      if (!chip) return;
+      if (chip.dataset.shiftsub === 'create') showCreate();
+      else showSub('list');
+    });
     document.getElementById('shift-form').addEventListener('submit', submit);
     document.getElementById('shift-search').addEventListener('input', render);
     document.getElementById('shifts-list').addEventListener('click', (e) => {
