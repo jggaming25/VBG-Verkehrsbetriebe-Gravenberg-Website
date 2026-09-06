@@ -87,24 +87,10 @@ async function init() {
     )
   `);
   await client.execute(`
-    CREATE TABLE IF NOT EXISTS reports (
+    CREATE TABLE IF NOT EXISTS notices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      reported_user_id INTEGER NOT NULL REFERENCES users(id),
-      reporter_user_id INTEGER NOT NULL REFERENCES users(id),
-      ticket_id INTEGER REFERENCES tickets(id),
-      message_id INTEGER REFERENCES ticket_messages(id),
-      reason TEXT NOT NULL,
-      details TEXT,
-      status TEXT NOT NULL DEFAULT 'offen',
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS warnings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      by_user_id INTEGER NOT NULL REFERENCES users(id),
-      reason TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -115,6 +101,9 @@ async function init() {
   }
   if (!(await hasColumn('users', 'avatar'))) {
     await client.execute(`ALTER TABLE users ADD COLUMN avatar TEXT`);
+  }
+  if (!(await hasColumn('users', 'discord_roles'))) {
+    await client.execute(`ALTER TABLE users ADD COLUMN discord_roles TEXT`);
   }
   if (!(await hasColumn('tickets', 'due_date'))) {
     await client.execute(`ALTER TABLE tickets ADD COLUMN due_date TEXT`);

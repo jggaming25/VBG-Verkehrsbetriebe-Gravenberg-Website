@@ -4,7 +4,6 @@ VBG.tickets = (function () {
   let currentTicket = null;
   let currentMessages = [];
   let pendingAttachment = null;
-  let pendingReport = null;
   let currentSub = null;
   const filters = { status: 'alle', q: '' };
 
@@ -140,7 +139,7 @@ VBG.tickets = (function () {
           <b>${esc(m.username)}</b>
           ${isStaffMsg ? `<span class="msg-role role-badge role-${esc(m.role)}">${esc(VBG.labels.roles[m.role] || m.role)}</span>` : ''}
           <span class="msg-time">${esc(fmtDateTime(m.created_at)).replace(', ', ' · ')}</span>
-          ${isMine ? '' : `<span class="msg-report" title="Nachricht melden" data-reportmsg="${m.id}" data-reportuser="${m.user_id}" data-reportname="${esc(m.username)}">⚑</span>`}
+          ${isMine ? '' : ''}
         </div>
         ${m.message ? `<p>${esc(m.message)}</p>` : ''}
         ${m.attachment ? `<a href="${m.attachment}" target="_blank" rel="noopener"><img class="msg-img" src="${m.attachment}" alt="Anhang"/></a>` : ''}
@@ -394,35 +393,6 @@ VBG.tickets = (function () {
     }
   }
 
-  function openReport(messageId, userId, name) {
-    if (!currentTicket) { toast('Bitte zuerst ein Ticket öffnen.', 'err'); return; }
-    pendingReport = { ticket_id: currentTicket.id, message_id: messageId, reported_user_id: userId };
-    document.getElementById('report-target-text').textContent = 'Meldung an das Team senden – Nachricht von ' + name + '.';
-    document.getElementById('report-form').reset();
-    openModal('modal-report');
-  }
-
-  async function submitReport(e) {
-    e.preventDefault();
-    if (!pendingReport) { toast('Bitte zuerst eine Nachricht auswählen.', 'err'); return; }
-    const reason = document.getElementById('report-reason').value;
-    if (!reason) { toast('Bitte einen Grund wählen.', 'err'); return; }
-    const details = document.getElementById('report-details').value.trim();
-    const btn = document.getElementById('report-form').querySelector('button[type="submit"]');
-    btn.disabled = true;
-    try {
-      await API.post('/api/reports', { ...pendingReport, reason, details });
-      toast('Danke! Deine Meldung wurde an das Team gesendet.', 'ok');
-      closeModal('modal-report');
-      pendingReport = null;
-      if (VBG.state.user && VBG.isStaff(VBG.state.user.role)) VBG.admin.loadAdmin().catch(() => {});
-    } catch (err) {
-      toast(err.message, 'err');
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
   async function onFilePicked() {
     const input = document.getElementById('chat-file');
     const file = input.files && input.files[0];
@@ -457,7 +427,6 @@ VBG.tickets = (function () {
     });
     document.getElementById('ticket-form').addEventListener('submit', submitNew);
     document.getElementById('ticket-edit-form').addEventListener('submit', submitEdit);
-    document.getElementById('report-form').addEventListener('submit', submitReport);
     document.getElementById('chat-send').addEventListener('click', sendMessage);
     document.getElementById('chat-text').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -466,12 +435,6 @@ VBG.tickets = (function () {
     document.getElementById('chat-file').addEventListener('change', onFilePicked);
     document.getElementById('chat-back').addEventListener('click', backToList);
     document.getElementById('chat-messages').addEventListener('click', (e) => {
-      const rep = e.target.closest('.msg-report');
-      if (rep) {
-        e.stopPropagation();
-        openReport(Number(rep.dataset.reportmsg), Number(rep.dataset.reportuser), rep.dataset.reportname);
-        return;
-      }
       const imgLink = e.target.closest('a[href^="data:image"]');
       if (imgLink) openImageView(imgLink.href);
     });

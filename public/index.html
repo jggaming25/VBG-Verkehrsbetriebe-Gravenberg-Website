@@ -42,7 +42,7 @@
           <button class="dropdown-item" id="dd-tickets-create" type="button">➕ Ticket erstellen</button>
         </div>
       </div>
-      <button class="nav-link hidden" id="nav-admin" data-tab="admin">Admin<span id="admin-badge" class="nav-badge hidden"></span></button>
+      <button class="nav-link hidden" id="nav-admin" data-tab="admin">Admin</button>
       <button class="nav-link hidden" id="nav-account" data-tab="account">Konto</button>
     </div>
 
@@ -60,6 +60,9 @@
     </div>
   </div>
 </nav>
+
+<!-- ===================== MELDUNGEN (BANNER) ===================== -->
+<div id="notices-bar" class="notices-bar hidden"></div>
 
 <main class="main">
   <!-- ===================== START / LANDING ===================== -->
@@ -352,46 +355,47 @@
     <div class="page-head">
       <div>
         <h1>Admin</h1>
-        <p>Eingehende Meldungen und Verwarnungen.</p>
+        <p>Meldungen an die Community und die Verwaltung aller Konten.</p>
       </div>
     </div>
 
     <div class="admin-section">
       <div class="section-head">
-        <h2>🛡️ Meldungen</h2>
-        <p class="muted" id="admin-reports-sub">Offene Meldungen stehen oben.</p>
+        <h2>⚠️ Meldung erstellen</h2>
+        <p class="muted">Wird als gelbes Banner unter der Navigation angezeigt.</p>
       </div>
-      <div id="admin-reports" class="admin-list"></div>
-    </div>
-
-    <div class="admin-section">
-      <div class="section-head"><h2>⚠️ Verwarnung vergeben</h2></div>
       <div class="card form-card">
-        <form id="warn-form" class="form">
+        <form id="notice-form" class="form">
           <div class="row gap">
             <label class="field flex1">
-              <span>Spieler</span>
-              <select class="input" id="warn-user" required></select>
+              <span>Meldungstext</span>
+              <input class="input" id="notice-text" type="text" maxlength="300" required placeholder="Z. B. Wartungsarbeiten heute 18–20 Uhr"/>
             </label>
-            <label class="field flex2">
-              <span>Grund</span>
-              <input class="input" id="warn-reason" type="text" maxlength="500" required placeholder="Z. B. Beleidigung im Chat"/>
-            </label>
+            <button class="btn btn-primary" type="submit">Veröffentlichen</button>
           </div>
-          <button class="btn btn-primary btn-full" type="submit">Verwarnen</button>
         </form>
       </div>
+      <div id="admin-notices" class="admin-list"></div>
     </div>
 
     <div class="admin-section">
-      <div class="section-head"><h2>📜 Verwarnungen</h2></div>
-      <div id="admin-warnings" class="admin-list"></div>
+      <div class="section-head">
+        <h2>👥 Kontoübersicht</h2>
+        <p class="muted">Alle registrierten Spieler und ihre Rollen.</p>
+      </div>
+      <input class="input input-search" id="user-search" type="search" placeholder="Spieler suchen …"/>
+      <div class="table-wrap">
+        <table class="users-table">
+          <thead><tr><th>Spieler</th><th>E-Mail</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
   <!-- ===================== KONTO ===================== -->
   <section id="tab-account" class="tab">
-    <div class="page-head"><div><h1>Konto</h1><p>Dein Profil und die Rollenübersicht.</p></div></div>
+    <div class="page-head"><div><h1>Konto</h1><p>Dein Profil und deine Discord-Rollen.</p></div></div>
 
     <div class="account-grid">
       <div class="card profile-card">
@@ -410,6 +414,7 @@
           <dt>Mitglied seit</dt><dd id="profile-created">–</dd>
           <dt>Sign-In</dt><dd id="profile-provider">E-Mail</dd>
         </dl>
+        <div id="profile-discord-roles" class="discord-roles"></div>
         <div id="verify-banner" class="verify-banner hidden">
           <p>Bestätige deine E-Mail, um die Team-Benachrichtigungen zu erhalten.</p>
           <div class="row gap">
@@ -419,22 +424,6 @@
           <button class="btn-link" id="btn-resend-code">Code erneut senden</button>
         </div>
         <button class="btn btn-danger btn-full mt" id="btn-logout">Abmelden</button>
-      </div>
-
-      <div class="card" id="account-overview">
-        <div class="profile-top">
-          <div>
-            <h2>Kontoübersicht</h2>
-            <p class="muted">Alle registrierten Spieler und ihre Rollen.</p>
-          </div>
-        </div>
-        <input class="input input-search" id="user-search" type="search" placeholder="Spieler suchen …"/>
-        <div class="table-wrap">
-          <table class="users-table">
-            <thead><tr><th>Spieler</th><th>E-Mail</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
-            <tbody id="users-tbody"></tbody>
-          </table>
-        </div>
       </div>
     </div>
   </section>
@@ -499,32 +488,6 @@
         <button class="btn btn-ghost btn-full" type="button" data-close="modal-edit-ticket">Abbrechen</button>
         <button class="btn btn-primary btn-full" type="submit">Speichern</button>
       </div>
-    </form>
-  </div>
-</div>
-
-<div class="modal hidden" id="modal-report">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close icon-btn" data-close="modal-report">✕</button>
-    <div class="modal-head"><h2>Nachricht melden</h2><p class="muted" id="report-target-text">Melde diese Nachricht an das Team.</p></div>
-    <form id="report-form" class="form">
-      <label class="field">
-        <span>Grund</span>
-        <select class="input" id="report-reason" required>
-          <option value="">– Bitte wählen –</option>
-          <option value="beleidigung">Beleidigung / Ungesprächige Sprache</option>
-          <option value="spam">Spam / Werbung</option>
-          <option value="betrug">Betrug / Scam</option>
-          <option value="hacking">Cheating / Hacking</option>
-          <option value="sonstiges">Sonstiges</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Zusätzliche Informationen (optional)</span>
-        <textarea class="input" id="report-details" rows="3" maxlength="1000" placeholder="Beschreibe kurz, was passiert ist …"></textarea>
-      </label>
-      <button class="btn btn-primary btn-full" type="submit">Melden</button>
     </form>
   </div>
 </div>

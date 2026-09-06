@@ -50,7 +50,7 @@
     if (name === 'shifts') VBG.shifts.load().catch((e) => toast(e.message, 'err'));
     if (name === 'tickets') VBG.tickets.load().catch((e) => toast(e.message, 'err'));
     if (name === 'account') renderAccount();
-    if (name === 'admin') VBG.admin.loadAdmin().catch((e) => toast(e.message, 'err'));
+    if (name === 'admin') VBG.admin.load().catch((e) => toast(e.message, 'err'));
   }
   window.showTab = showTab;
 
@@ -135,7 +135,19 @@
     $('profile-verified').textContent = u.verified ? '✓ Verifiziert' : '✗ Nicht verifiziert';
     $('profile-verified').className = 'verified' + (u.verified ? '' : ' muted');
     $('verify-banner').classList.toggle('hidden', !!u.verified);
-    VBG.admin.load().catch((e) => toast(e.message, 'err'));
+    renderDiscordRoles(u.discord_roles || []);
+  }
+
+  function renderDiscordRoles(roles) {
+    const wrap = $('profile-discord-roles');
+    if (!roles || !roles.length) {
+      wrap.innerHTML = '<p class="muted">Keine Discord-Rollen verknüpft.</p>';
+      return;
+    }
+    wrap.innerHTML = '<h3 class="roles-title">🎖️ Discord-Rollen</h3>' + roles.map((r) => {
+      const label = VBG.discordRoles[r] || r;
+      return `<span class="discord-role-chip">${label}</span>`;
+    }).join('');
   }
 
   async function verifyCode() {
@@ -191,8 +203,36 @@
     } else {
       $('btn-hero-ticket').textContent = 'Anmelden & Support-Ticket';
     }
-    if (staff) VBG.admin.loadAdmin().catch(() => {});
   }
+
+  /* ------------------------------ Meldungen (Banner) ------------------------------ */
+
+  async function loadNotices() {
+    const wrap = $('notices-bar');
+    try {
+      const { notices } = await API.get('/api/notices');
+      if (!notices.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+      wrap.innerHTML = notices.map((n) => `
+        <div class="notice-item">
+          <span class="notice-icon">⚠️</span>
+          <span class="notice-text">${esc(n.text)}</span>
+          ${VBG.isOwner(state.user && state.user.role) ? `<button class="notice-del icon-btn" data-delnotice="${n.id}" title="Meldung löschen">✕</button>` : ''}
+        </div>`).join('');
+      wrap.classList.remove('hidden');
+      wrap.querySelectorAll('[data-delnotice]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            await API.del('/api/notices/' + b.dataset.delnotice);
+            toast('Meldung gelöscht.', 'ok');
+            loadNotices();
+          } catch (err) { toast(err.message, 'err'); }
+        });
+      });
+    } catch (e) {
+      wrap.classList.add('hidden');
+    }
+  }
+  VBG.loadNotices = loadNotices;
 
   /* ------------------------------ E-Mail (EmailJS) ------------------------------ */
 
@@ -314,12 +354,13 @@
 
     bind();
     loadGallery();
+    loadNotices();
 
     API.get('/api/me')
       .then((data) => {
         state.user = data.user;
         updateAuthUI();
-        if (state.user) VBG.shifts.load().catch(() => {});
+        if (state.user) { VBG.shifts.load().catch(() => {}); loadNotices(); }
       })
       .catch(() => {});
   }

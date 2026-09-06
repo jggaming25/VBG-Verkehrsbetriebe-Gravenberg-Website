@@ -304,6 +304,7 @@ https://DEIN-NAME.onrender.com/api/auth/discord/callback
 | `OWNER_EMAILS` | optional, Inhaber-E-Mails | `janngenzmann@gmail.com,platzhalter1@gmail.com` |
 | `DISCORD_CLIENT_ID` | aus 6.2 | `123456789012345678` |
 | `DISCORD_CLIENT_SECRET` | aus 6.2 | `xxxxxxxx` |
+| `DISCORD_WEBHOOK_URL` | optional, „VBG Log“-Webhook | `https://discord.com/api/webhooks/...` |
 
 > `NODE_ENV=production` ist wichtig – dann werden Cookies nur über HTTPS gesendet (sichere Sessions).
 

@@ -1,29 +1,14 @@
-/* VBG – Kontoübersicht / Rollenverwaltung + Admin-Bereich (Meldungen, Verwarnungen) */
+/* VBG – Admin-Bereich: Meldungs-Banner verwalten + Kontoübersicht/Rollenverwaltung */
 VBG.admin = (function () {
   let users = [];
-  let reports = [];
-  let warnings = [];
-
-  function setBadge(n) {
-    const b = document.getElementById('admin-badge');
-    if (!b) return;
-    const count = n || 0;
-    b.classList.toggle('hidden', !count);
-    b.textContent = count > 99 ? '99+' : count;
-  }
 
   /* ------------------------------ Kontoübersicht (Rollentabelle) ------------------------------ */
 
   async function load() {
-    const wrap = document.getElementById('account-overview');
-    if (!VBG.isStaff(VBG.state.user.role)) {
-      wrap.classList.add('hidden');
-      return;
-    }
-    wrap.classList.remove('hidden');
     const data = await API.get('/api/users');
     users = data.users || [];
     render();
+    loadNotices();
   }
 
   function render() {
@@ -60,129 +45,50 @@ VBG.admin = (function () {
     }
   }
 
-  /* ------------------------------ Admin-Bereich (Meldungen & Verwarnungen) ------------------------------ */
+  /* ------------------------------ Meldungen (Banner) ------------------------------ */
 
-  async function loadAdmin() {
-    if (!VBG.state || !VBG.state.user || !VBG.isStaff(VBG.state.user.role)) return;
-    const [reportsData, warningsData, usersData] = await Promise.all([
-      API.get('/api/reports'),
-      API.get('/api/warnings'),
-      API.get('/api/users')
-    ]);
-    reports = reportsData.reports || [];
-    warnings = warningsData.warnings || [];
-    users = usersData.users || [];
-    setBadge(reportsData.openCount || 0);
-    renderWarnUsers();
-    renderReports();
-    renderWarnings();
-  }
-
-  function renderWarnUsers() {
-    const sel = document.getElementById('warn-user');
-    if (!sel) return;
-    const me = VBG.state.user && VBG.state.user.id;
-    sel.innerHTML = '<option value="">– Spieler wählen –</option>' +
-      users
-        .filter((u) => u.id !== me)
-        .map((u) => `<option value="${u.id}">${esc(u.username)} (${esc(VBG.labels.roles[u.role] || u.role)})</option>`)
-        .join('');
-  }
-
-  function short(text, n) {
-    const s = String(text == null ? '' : text);
-    return s.length > n ? s.slice(0, n) + '…' : s;
-  }
-
-  function reportHtml(r) {
-    const ctx = [];
-    if (r.message_text) ctx.push(`Nachricht: „${esc(short(r.message_text, 180))}”`);
-    if (r.ticket_subject) ctx.push(`Ticket: ${esc(r.ticket_subject)}`);
-    const actions = r.status === 'offen'
-      ? `<div class="report-actions">
-          <button class="btn btn-sm btn-ghost" data-resolve-report="${r.id}">Als erledigt markieren</button>
-          <button class="btn btn-sm btn-danger" data-warn-report="${r.id}">⚠️ Verwarnen</button>
-        </div>`
-      : '';
-    return `<div class="report-item ${r.status === 'offen' ? 'open' : ''}">
-      <div class="report-body">
-        <div class="report-top">
-          <span class="report-from">${avatarHtml({ username: r.reported_name })} ${esc(r.reported_name)}</span>
-          <span class="report-arrow">→</span>
-          <span class="report-reason">${esc(r.reason)}</span>
-          <span class="badge ${r.status === 'offen' ? 'badge-p-hoch' : ''}">${r.status === 'offen' ? '🟡 offen' : '✅ erledigt'}</span>
-        </div>
-        ${ctx.length ? `<div class="report-ctx">${ctx.join(' · ')}</div>` : ''}
-        <div class="report-meta">Gemeldet von ${esc(r.reporter_name)} · ${esc(fmtDateTime(r.created_at))}</div>
-      </div>
-      ${actions}
-    </div>`;
-  }
-
-  function renderReports() {
-    const wrap = document.getElementById('admin-reports');
-    const sub = document.getElementById('admin-reports-sub');
-    const open = reports.filter((r) => r.status === 'offen').length;
-    sub.textContent = reports.length
-      ? `${reports.length} Meldung(en) insgesamt · ${open} offen – offene stehen oben.`
-      : 'Alle Meldungen bearbeitet.';
-    wrap.innerHTML = reports.length
-      ? reports.map(reportHtml).join('')
-      : `<div class="empty-state"><div class="big">🛡️</div><p>Keine Meldungen vorhanden.</p><p class="muted">Gemeldete Nachrichten erscheinen hier.</p></div>`;
-  }
-
-  function warningHtml(w) {
-    return `<div class="warn-item">
-      <span class="warn-ic">⚠️</span>
-      <div>
-        <div><b>${esc(w.user_name)}</b> wurde von <span class="muted">${esc(w.by_name)}</span> verwarnt</div>
-        <div class="warn-reason">${esc(short(w.reason, 300))}</div>
-        <div class="report-meta">${esc(fmtDateTime(w.created_at))}</div>
-      </div>
-    </div>`;
-  }
-
-  function renderWarnings() {
-    const wrap = document.getElementById('admin-warnings');
-    wrap.innerHTML = warnings.length
-      ? warnings.map(warningHtml).join('')
-      : `<div class="empty-state"><div class="big">📜</div><p>Noch keine Verwarnungen ausgesprochen.</p></div>`;
-  }
-
-  async function resolveReport(id) {
+  async function loadNotices() {
+    if (!VBG.isOwner(VBG.state.user.role)) return;
+    const wrap = document.getElementById('admin-notices');
     try {
-      await API.post('/api/reports/' + id + '/resolve');
-      toast('Meldung als erledigt markiert.', 'ok');
-      loadAdmin();
-    } catch (err) { toast(err.message, 'err'); }
-  }
-
-  async function warnFromReport(id) {
-    try {
-      await API.post('/api/reports/' + id + '/warn');
-      toast('Spieler verwarnt – Meldung erledigt.', 'ok');
-      loadAdmin();
-    } catch (err) { toast(err.message, 'err'); }
-  }
-
-  async function submitWarn(e) {
-    e.preventDefault();
-    const userId = document.getElementById('warn-user').value;
-    const reason = document.getElementById('warn-reason').value.trim();
-    if (!userId) { toast('Bitte einen Spieler wählen.', 'err'); return; }
-    if (!reason) { toast('Bitte einen Grund angeben.', 'err'); return; }
-    const btn = document.getElementById('warn-form').querySelector('button[type="submit"]');
-    btn.disabled = true;
-    try {
-      await API.post('/api/users/' + userId + '/warn', { reason });
-      toast('Verwarnung erteilt.', 'ok');
-      document.getElementById('warn-reason').value = '';
-      loadAdmin();
+      const { notices } = await API.get('/api/notices');
+      wrap.innerHTML = notices.length
+        ? notices.map((n) => `
+          <div class="notice-item">
+            <div>
+              <div class="notice-text">${esc(n.text)}</div>
+              <div class="report-meta">${esc(n.created_by || 'Team')} · ${esc(fmtDateTime(n.created_at))}</div>
+            </div>
+            <button class="btn btn-sm btn-danger" data-delnotice="${n.id}">Löschen</button>
+          </div>`).join('')
+        : '<div class="empty-state"><div class="big">⚠️</div><p>Noch keine Meldungen erstellt.</p></div>';
+      wrap.querySelectorAll('[data-delnotice]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            await API.del('/api/notices/' + b.dataset.delnotice);
+            toast('Meldung gelöscht.', 'ok');
+            loadNotices();
+            VBG.loadNotices();
+          } catch (err) { toast(err.message, 'err'); }
+        });
+      });
     } catch (err) {
-      toast(err.message, 'err');
-    } finally {
-      btn.disabled = false;
+      wrap.innerHTML = '<p class="muted">Meldungen konnten nicht geladen werden.</p>';
     }
+  }
+
+  async function submitNotice(e) {
+    e.preventDefault();
+    const input = document.getElementById('notice-text');
+    const text = input.value.trim();
+    if (!text) { toast('Bitte einen Meldungstext angeben.', 'err'); return; }
+    try {
+      await API.post('/api/notices', { text });
+      input.value = '';
+      toast('Meldung veröffentlicht.', 'ok');
+      loadNotices();
+      VBG.loadNotices();
+    } catch (err) { toast(err.message, 'err'); }
   }
 
   function bind() {
@@ -191,14 +97,9 @@ VBG.admin = (function () {
       if (sel) changeRole(Number(sel.dataset.rolefor), sel.value);
     });
     document.getElementById('user-search').addEventListener('input', render);
-    document.getElementById('admin-reports').addEventListener('click', (e) => {
-      const res = e.target.closest('[data-resolve-report]');
-      if (res) { e.stopPropagation(); resolveReport(Number(res.dataset.resolveReport)); return; }
-      const warn = e.target.closest('[data-warn-report]');
-      if (warn) { e.stopPropagation(); warnFromReport(Number(warn.dataset.warnReport)); return; }
-    });
-    document.getElementById('warn-form').addEventListener('submit', submitWarn);
+    document.getElementById('notice-form').addEventListener('submit', submitNotice);
+    loadNotices();
   }
 
-  return { bind, load, render, loadAdmin };
+  return { bind, load, render };
 })();

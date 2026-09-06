@@ -6,6 +6,18 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 
+function loadEnv() {
+  try {
+    const text = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/);
+      if (!m || !m[1]) continue;
+      if (!(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  } catch (e) { }
+}
+loadEnv();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -28,6 +40,61 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 const ROLES = ['besucher', 'bearbeiter', 'inhaber'];
 
+const DISCORD_GAME_ROLES = {
+  '1544008757447757965': 'Trainee Busfahrer',
+  '1544007506475614308': 'Busfahrer',
+  '1545071119000805447': 'Trainee Leitstelle',
+  '1544007146751139880': 'Leitstelle',
+  '1544007001489809579': 'Trainee Notfallmanager',
+  '1544006432892911616': 'Notfallmanager',
+  '1544009575550947418': 'Trainee Kundenservice',
+  '1544008876020596786': 'Kundenservice'
+};
+
+const discordRoleName = (id) => DISCORD_GAME_ROLES[String(id)] || null;
+
+async function fetchDiscordRoles(accessToken) {
+  try {
+    const guildRes = await fetch('https://discord.com/api/users/@me/guilds', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!guildRes.ok) return [];
+    const guilds = await guildRes.json();
+    const found = [];
+    await Promise.all((guilds || []).map(async (g) => {
+      try {
+        const mRes = await fetch(`https://discord.com/api/users/@me/guilds/${g.id}/member`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (!mRes.ok) return;
+        const member = await mRes.json();
+        const roles = (member.roles || []).map((r) => String(r)).filter((r) => r in DISCORD_GAME_ROLES);
+        for (const r of roles) if (!found.includes(r)) found.push(r);
+      } catch (e) { }
+    }));
+    return found;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function discordLog(title, description, color) {
+  const url = process.env.DISCORD_WEBHOOK_URL;
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'VBG Log',
+        embeds: [{ title, description: String(description || '').slice(0, 1800), color: color || 0x2e9e5b, timestamp: new Date().toISOString() }]
+      })
+    });
+  } catch (e) {
+    console.error('[webhook]', e.message);
+  }
+}
+
 function sha256(s) {
   return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
@@ -43,6 +110,10 @@ function setSessionCookie(res, token) {
 
 function publicUser(u) {
   if (!u) return null;
+  let discordRoles = [];
+  if (u.discord_roles) {
+    try { discordRoles = JSON.parse(u.discord_roles); } catch (e) { discordRoles = []; }
+  }
   return {
     id: u.id,
     email: u.email,
@@ -50,6 +121,7 @@ function publicUser(u) {
     role: u.role,
     verified: u.verified,
     avatar: u.avatar || null,
+    discord_roles: discordRoles,
     created_at: u.created_at,
   };
 }
@@ -58,7 +130,7 @@ async function currentUser(req) {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
   const rows = await db.all(
-    `SELECT u.id, u.email, u.username, u.role, u.verified, u.verify_code, u.created_at, u.avatar
+    `SELECT u.id, u.email, u.username, u.role, u.verified, u.verify_code, u.created_at, u.avatar, u.discord_roles
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ?`,
     [sha256(token)]
@@ -112,8 +184,9 @@ app.post('/api/register', async (req, res) => {
     const token = await startSession(userId);
     setSessionCookie(res, token);
 
-    const u = await db.get('SELECT id, email, username, role, verified, avatar, created_at FROM users WHERE id = ?', [userId]);
+    const u = await db.get('SELECT id, email, username, role, verified, avatar, created_at, discord_roles FROM users WHERE id = ?', [userId]);
     res.json({ ok: true, user: publicUser(u), verifyCode });
+    discordLog('📝 Neue Registrierung', `**${String(username).trim()}** (${mail}) hat sich registriert. Rolle: ${isOwner ? 'Inhaber' : 'Besucher'}`);
   } catch (e) {
     console.error('[register]', e);
     res.status(500).json({ error: 'Serverfehler beim Registrieren.' });
@@ -131,6 +204,7 @@ app.post('/api/login', async (req, res) => {
     const token = await startSession(user.id);
     setSessionCookie(res, token);
     res.json({ ok: true, user: publicUser(user) });
+    discordLog('🔑 Login', `**${user.username}** (${mail}) hat sich per Passwort angemeldet.`);
   } catch (e) {
     console.error('[login]', e);
     res.status(500).json({ error: 'Serverfehler beim Login.' });
@@ -187,7 +261,7 @@ app.get('/api/auth/discord', (req, res) => {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'identify email',
+    scope: 'identify email guilds guilds.members.read',
     state,
   });
   res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
@@ -238,25 +312,29 @@ app.get('/api/auth/discord/callback', async (req, res) => {
 
     const avatar = disc.avatar ? discordAvatarUrl(disc.id, disc.avatar) : null;
     const desiredName = disc.global_name || disc.username || `Discord-${disc.id.toString().slice(-4)}`;
+    const discordRoles = await fetchDiscordRoles(access_token);
+    const rolesJson = JSON.stringify(discordRoles);
 
     let user = await db.get('SELECT * FROM users WHERE discord_id = ?', [disc.id]);
+    let isNew = false;
     if (!user) {
       user = await db.get('SELECT * FROM users WHERE email = ?', [mail]);
       if (user) {
         await db.run(
-          'UPDATE users SET discord_id = ?, avatar = ?, verified = 1, verify_code = NULL WHERE id = ?',
-          [disc.id, avatar, user.id]
+          'UPDATE users SET discord_id = ?, avatar = ?, verified = 1, verify_code = NULL, discord_roles = ? WHERE id = ?',
+          [disc.id, avatar, rolesJson, user.id]
         );
       } else {
         const r = await db.run(
-          `INSERT INTO users (email, username, role, verified, discord_id, avatar)
-           VALUES (?,?,?,1,?,?)`,
-          [mail, desiredName, OWN_ROLE_FOR_EMAIL(mail), disc.id, avatar]
+          `INSERT INTO users (email, username, role, verified, discord_id, avatar, discord_roles)
+           VALUES (?,?,?,1,?,?,?)`,
+          [mail, desiredName, OWN_ROLE_FOR_EMAIL(mail), disc.id, avatar, rolesJson]
         );
         user = { id: Number(r.lastRowId) };
+        isNew = true;
       }
     } else {
-      await db.run('UPDATE users SET avatar = ?, verified = 1, verify_code = NULL WHERE id = ?', [avatar, user.id]);
+      await db.run('UPDATE users SET avatar = ?, verified = 1, verify_code = NULL, discord_roles = ? WHERE id = ?', [avatar, rolesJson, user.id]);
       if (OWNER_EMAILS.includes(mail) && user.role !== 'inhaber') {
         await db.run('UPDATE users SET role = ? WHERE id = ?', ['inhaber', user.id]);
       }
@@ -265,6 +343,8 @@ app.get('/api/auth/discord/callback', async (req, res) => {
     const token = await startSession(user.id);
     setSessionCookie(res, token);
     res.redirect('/');
+    const roleNames = discordRoles.map((r) => (discordRoleName(r) || r)).join(', ');
+    discordLog(isNew ? '✨ Neues Discord-Konto' : '🔗 Discord-Login', `**${desiredName}** (${user.id}) hat sich angemeldet.${roleNames ? '\n🎖️ Rollen: ' + roleNames : ''}`);
   } catch (e) {
     console.error('[discord callback]', e);
     res.redirect('/?auth_error=' + encodeURIComponent('Discord-Login fehlgeschlagen.'));
@@ -296,6 +376,7 @@ app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
   }
   await db.run('UPDATE users SET role = ? WHERE id = ?', [role, id]);
   res.json({ ok: true });
+  discordLog('🛡️ Rollenänderung', `**${target.email}** wurde von **${target.role}** auf **${role}** geändert (${req.user.username}).`);
 });
 
 app.get('/api/staff-emails', guard(), async (req, res) => {
@@ -326,14 +407,16 @@ app.post('/api/shifts', guard(['inhaber']), async (req, res) => {
     [String(title).trim(), String(description || '').trim(), date, time_start, time_end || null, image, req.user.id]
   );
   res.json({ ok: true, id: Number(r.lastRowId) });
+  discordLog('🚍 Neue Schicht', `**${String(title).trim()}** am ${date} (${time_start}${time_end ? '–' + time_end : ''}) von ${req.user.username}`);
 });
 
 app.delete('/api/shifts/:id', guard(['inhaber']), async (req, res) => {
   const id = Number(req.params.id);
-  const exists = await db.get('SELECT id FROM shifts WHERE id = ?', [id]);
+  const exists = await db.get('SELECT id, title FROM shifts WHERE id = ?', [id]);
   if (!exists) return res.status(404).json({ error: 'Schicht nicht gefunden.' });
   await db.run('DELETE FROM shifts WHERE id = ?', [id]);
   res.json({ ok: true });
+  discordLog('🗑️ Schicht gelöscht', `**${exists.title}** wurde entfernt.`);
 });
 
 app.get('/api/images', (req, res) => {
@@ -349,94 +432,34 @@ app.get('/api/images', (req, res) => {
   }
 });
 
-/* ------------------------------ Reports & Verwarnungen ------------------------------ */
+/* ------------------------------ Meldungen (Banner) ------------------------------ */
 
-app.post('/api/reports', guard(), async (req, res) => {
-  try {
-    const { reported_user_id, reason, details, ticket_id, message_id } = req.body || {};
-    const rid = Number(reported_user_id);
-    if (!rid || rid === req.user.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst melden.' });
-    const reasonStr = String(reason || '').trim();
-    if (!reasonStr) return res.status(400).json({ error: 'Bitte einen Grund angeben.' });
-    if (reasonStr.length > 200) return res.status(400).json({ error: 'Grund zu lang (max. 200 Zeichen).' });
-    const target = await db.get('SELECT id FROM users WHERE id = ?', [rid]);
-    if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-    await db.run(
-      `INSERT INTO reports (reported_user_id, reporter_user_id, ticket_id, message_id, reason, details)
-       VALUES (?,?,?,?,?,?)`,
-      [rid, req.user.id, ticket_id ? Number(ticket_id) : null, message_id ? Number(message_id) : null, reasonStr, String(details || '').trim().slice(0, 1000) || null]
-    );
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('[reports create]', e);
-    res.status(500).json({ error: 'Serverfehler beim Melden.' });
-  }
-});
-
-app.get('/api/reports', guard(['inhaber', 'bearbeiter']), async (req, res) => {
-  const reports = await db.all(
-    `SELECT r.*, ru.username AS reported_name, re.username AS reporter_name, m.message AS message_text, t.subject AS ticket_subject
-     FROM reports r
-     JOIN users ru ON ru.id = r.reported_user_id
-     JOIN users re ON re.id = r.reporter_user_id
-     LEFT JOIN ticket_messages m ON m.id = r.message_id
-     LEFT JOIN tickets t ON t.id = r.ticket_id
-     ORDER BY CASE r.status WHEN 'offen' THEN 0 ELSE 1 END, r.id DESC`
+app.get('/api/notices', async (req, res) => {
+  const notices = await db.all(
+    `SELECT n.id, n.text, n.created_at, u.username AS created_by
+     FROM notices n JOIN users u ON u.id = n.created_by
+     ORDER BY n.id DESC`
   );
-  const openCount = (await db.get(`SELECT COUNT(*) AS c FROM reports WHERE status = 'offen'`)).c;
-  res.json({ reports, openCount });
+  res.json({ notices });
 });
 
-app.post('/api/reports/:id/resolve', guard(['inhaber', 'bearbeiter']), async (req, res) => {
-  const rid = Number(req.params.id);
-  const rep = await db.get('SELECT * FROM reports WHERE id = ?', [rid]);
-  if (!rep) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
-  await db.run(`UPDATE reports SET status='erledigt' WHERE id = ?`, [rid]);
+app.post('/api/notices', guard(['inhaber']), async (req, res) => {
+  const text = String((req.body || {}).text || '').trim();
+  if (!text) return res.status(400).json({ error: 'Bitte einen Meldungstext angeben.' });
+  if (text.length > 300) return res.status(400).json({ error: 'Meldungstext zu lang (max. 300 Zeichen).' });
+  const r = await db.run(`INSERT INTO notices (text, created_by) VALUES (?,?)`, [text, req.user.id]);
+  res.json({ ok: true, id: Number(r.lastRowId) });
+  discordLog('⚠️ Neue Meldung', `**${text}**\nErstellt von ${req.user.username}`);
+});
+
+app.delete('/api/notices/:id', guard(['inhaber']), async (req, res) => {
+  const id = Number(req.params.id);
+  const n = await db.get('SELECT text FROM notices WHERE id = ?', [id]);
+  if (!n) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
+  await db.run(`DELETE FROM notices WHERE id = ?`, [id]);
   res.json({ ok: true });
+  discordLog('🗑️ Meldung gelöscht', `„**${n.text}**“ wurde entfernt.`);
 });
-
-app.post('/api/reports/:id/warn', guard(['inhaber', 'bearbeiter']), async (req, res) => {
-  const rid = Number(req.params.id);
-  const rep = await db.get('SELECT * FROM reports WHERE id = ?', [rid]);
-  if (!rep) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
-  await addWarning(rep.reported_user_id, req.user.id, rep.reason);
-  await db.run(`UPDATE reports SET status='erledigt' WHERE id = ?`, [rid]);
-  res.json({ ok: true });
-});
-
-app.get('/api/warnings', guard(['inhaber', 'bearbeiter']), async (req, res) => {
-  const warnings = await db.all(
-    `SELECT w.*, u.username AS user_name, b.username AS by_name
-     FROM warnings w
-     JOIN users u ON u.id = w.user_id
-     JOIN users b ON b.id = w.by_user_id
-     ORDER BY w.id DESC LIMIT 100`
-  );
-  res.json({ warnings });
-});
-
-app.post('/api/users/:id/warn', guard(['inhaber', 'bearbeiter']), async (req, res) => {
-  try {
-    const uid = Number(req.params.id);
-    const reason = String((req.body || {}).reason || '').trim();
-    if (!reason) return res.status(400).json({ error: 'Bitte einen Grund für die Verwarnung angeben.' });
-    if (reason.length > 500) return res.status(400).json({ error: 'Grund zu lang (max. 500 Zeichen).' });
-    const target = await db.get('SELECT id FROM users WHERE id = ?', [uid]);
-    if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-    await addWarning(uid, req.user.id, reason);
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('[warn]', e);
-    res.status(500).json({ error: 'Serverfehler beim Verwarnen.' });
-  }
-});
-
-async function addWarning(userId, byUserId, reason) {
-  await db.run(
-    `INSERT INTO warnings (user_id, by_user_id, reason) VALUES (?,?,?)`,
-    [userId, byUserId, reason]
-  );
-}
 
 /* ------------------------------ Tickets ------------------------------ */
 
@@ -451,7 +474,7 @@ app.get('/api/tickets', guard(), async (req, res) => {
     FROM tickets t
     JOIN users u ON u.id = t.user_id
     LEFT JOIN users a ON a.id = t.assignee_id
-    ${staff ? '' : 'WHERE t.user_id = ?'}
+    ${staff ? '' : 'WHERE t.user_id = ? AND t.status != \'geschlossen\''}
     ORDER BY
       CASE t.status WHEN 'offen' THEN 0 WHEN 'in_arbeit' THEN 1 ELSE 2 END,
       t.updated_at DESC`;
@@ -475,6 +498,7 @@ app.post('/api/tickets', guard(), async (req, res) => {
     [newId, req.user.id, `Ticket ${vbgTicketNr(newId)} wurde erstellt von ${req.user.username}.`]
   );
   res.json({ ok: true, id: Number(r.lastRowId) });
+  discordLog('🎫 Neues Ticket', `**${vbgTicketNr(newId)}** – ${String(subject).trim()} (${category}, ${priority || 'normal'}) von ${req.user.username}`);
 });
 
 async function loadTicketFor(req, res) {
@@ -488,6 +512,9 @@ async function loadTicketFor(req, res) {
   if (!t) return { error: res.status(404).json({ error: 'Ticket nicht gefunden.' }) };
   if (t.user_id !== req.user.id && !isStaff(req.user)) {
     return { error: res.status(403).json({ error: 'Zugriff verweigert.' }) };
+  }
+  if (!isStaff(req.user) && t.status === 'geschlossen') {
+    return { error: res.status(403).json({ error: 'Das Ticket ist geschlossen und nur noch über den Archiv-Link verfügbar.' }) };
   }
   return { t };
 }
@@ -646,12 +673,18 @@ app.post('/api/tickets/:id/unclaim', guard(['inhaber', 'bearbeiter']), async (re
 app.post('/api/tickets/:id/close', guard(['inhaber', 'bearbeiter']), async (req, res) => {
   const { t, error } = await loadTicketFor(req, res);
   if (error) return;
+  let token = t.archive_token;
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    await db.run(`UPDATE tickets SET archive_token=? WHERE id=?`, [token, t.id]);
+  }
   await db.run(`UPDATE tickets SET status='geschlossen', updated_at=datetime('now') WHERE id=?`, [t.id]);
   await db.run(
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [t.id, req.user.id, `Ticket geschlossen von ${req.user.username}.`]
   );
-  res.json({ ok: true });
+  res.json({ ok: true, archive_token: token, archive_url: `${BASE_URL}/archiv/${token}` });
+  discordLog('🔒 Ticket geschlossen', `**${vbgTicketNr(t.id)}** wurde von ${req.user.username} geschlossen.\n📎 Archiv: ${BASE_URL}/archiv/${token}`);
 });
 
 app.post('/api/tickets/:id/reopen', guard(['inhaber', 'bearbeiter']), async (req, res) => {
@@ -663,7 +696,40 @@ app.post('/api/tickets/:id/reopen', guard(['inhaber', 'bearbeiter']), async (req
     [t.id, req.user.id, `Ticket wieder geöffnet von ${req.user.username}.`]
   );
   res.json({ ok: true });
+  discordLog('🔓 Ticket wieder geöffnet', `**${vbgTicketNr(t.id)}** wurde von ${req.user.username} wieder geöffnet.`);
 });
+
+/* ------------------------------ Ticket-Archiv (öffentlicher Link) ------------------------------ */
+
+app.get('/api/archive/:token', async (req, res) => {
+  const t = await db.get(
+    `SELECT t.*, u.username AS user_name, a.username AS assignee_name
+     FROM tickets t JOIN users u ON u.id = t.user_id LEFT JOIN users a ON a.id = t.assignee_id
+     WHERE t.archive_token = ?`,
+    [req.params.token]
+  );
+  if (!t) return res.status(404).json({ error: 'Archiv-Link ist ungültig oder abgelaufen.' });
+  const messages = await db.all(
+    `SELECT m.id, m.user_id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role
+     FROM ticket_messages m JOIN users u ON u.id = m.user_id
+     WHERE m.ticket_id = ? ORDER BY m.id ASC`,
+    [t.id]
+  );
+  res.json({ ticket: t, messages });
+});
+
+app.get('/archiv/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'archiv.html'));
+});
+
+/* ------------------------------ Ping / Keep-Alive ------------------------------ */
+
+app.get('/api/ping', (req, res) => res.json({ ok: true, t: Date.now() }));
+
+const PING_INTERVAL = (Number(process.env.PING_INTERVAL_MINUTES) || 4) * 60 * 1000;
+setInterval(() => {
+  fetch(`${BASE_URL}/api/ping`).catch(() => {});
+}, PING_INTERVAL);
 
 /* ------------------------------ Start ------------------------------ */
 

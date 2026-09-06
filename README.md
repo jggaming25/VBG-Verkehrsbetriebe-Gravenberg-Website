@@ -102,14 +102,16 @@ Falls du EmailJS (noch) nicht nutzen willst, einfach die Felder leer lassen. Dan
 2. Links **OAuth2 → General**:
    - **Redirects** eintragen: `https://DEINE-RENDER-URL/api/auth/discord/callback`
    - `Client ID` und `Client Secret` kopieren.
-   - Unter **Default Authorization Link** die Scopes `identify` und `email` markieren.
+   - Unter **Default Authorization Link** die Scopes `identify`, `email`, `guilds` und `guilds.members.read` markieren (nötig, um die Rollen anzuzeigen).
 3. Umgebungsvariablen auf Render:
    ```
    DISCORD_CLIENT_ID=1234567890...
    DISCORD_CLIENT_SECRET=xxxxxxxx
+   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
    BASE_URL=https://DEINE-RENDER-URL.onrender.com
    ```
    > `BASE_URL` ist wichtig – steuert die Admin-Seite und die OAuth-Redirect-URL.
+   > `DISCORD_WEBHOOK_URL` ist optional: Aktionen (Konten, Shifts, Tickets, Meldungen) werden dort als „VBG Log“ gepostet.
 
 Mit Discord angemeldete Nutzer sind automatisch **E-Mail-verifiziert** und bekommen ihren Discord-Avatar angezeigt.
 
@@ -126,6 +128,7 @@ Mit Discord angemeldete Nutzer sind automatisch **E-Mail-verifiziert** und bekom
 | `OWNER_EMAILS` | `janngenzmann@gmail.com,platzhalter1@gmail.com` | optional |
 | `DISCORD_CLIENT_ID` | – | optional |
 | `DISCORD_CLIENT_SECRET` | – | optional |
+| `DISCORD_WEBHOOK_URL` | – | optional („VBG Log“-Benachrichtigungen) |
 | `PING_INTERVAL_MINUTES` | `4` | optional (Server-Ticker + keep-alive.js) |
 | `TARGET_URL` | `https://vbg.onrender.com` | optional (nur keep-alive.js) |
 | `SESSION_SECRET` | (reserviert) | – |
@@ -171,7 +174,9 @@ VBG Website/
 
 **Ping/Keep-Alive:** `GET /api/ping` · `npm run keepalive` (pingt `TARGET_URL`/`BASE_URL` alle `PING_INTERVAL_MINUTES` Min)
 
-**Meldungen & Verwarnungen:** `POST /api/reports` (alle, kein Selbstmelden) · `GET /api/reports` (Staff) · `POST /api/reports/:id/resolve` (Staff) · `POST /api/reports/:id/warn` (Staff, verwarnt + erledigt) · `GET /api/warnings` (Staff) · `POST /api/users/:id/warn` (Staff)
+**Meldungen (Banner):** `GET /api/notices` (öffentlich) · `POST /api/notices` (Inhaber) · `DELETE /api/notices/:id` (Inhaber)
+
+**Discord:** Login via OAuth (`identify email guilds guilds.members.read`) · Rollen (`discord_roles`) werden beim Login aus dem Bot-Bereich geladen und auf dem Profil angezeigt. Aktionen (Register, Login, Rollenänderung, Shifts, Tickets, Meldungen) werden optional als „VBG Log“ in einen Discord-Webhook gepostet (`DISCORD_WEBHOOK_URL`).
 
 > **Bearbeiten (`PUT /api/tickets/:id`):** Felder mit Themas/Kategorie/Priorität/Fälligkeitsdatum/Beschreibung. Nur für das **Team** (Bearbeiter/Inhaber); **Besucher** können nur kommentieren. Änderungen erscheinen als protokollierte Systemmeldung im Chat. Geschlossene Tickets sind gesperrt. Auch **Schließen/Wieder öffnen** ist Staff-only. Beim **Schließen** erzeugt der Server einen `archive_token`; die Antwort enthält `archive_url` – du kannst den Link direkt in die Zwischenablage kopieren und dem Besucher schicken.
 > **Nachrichten:** optional `attachment` (Base64-Daten-URL, max. ~8 MB pro Bild, wird im Browser auf 1200 px komprimiert).
