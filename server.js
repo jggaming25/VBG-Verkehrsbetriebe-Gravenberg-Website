@@ -44,7 +44,7 @@ function originUrl(req) {
 }
 
 function baseUrl(req) {
-  return process.env.BASE_URL || originUrl(req) || 'http://localhost:3000';
+  return (process.env.BASE_URL || originUrl(req) || 'http://localhost:3000').replace(/\/+$/, '');
 }
 
 const ROLES = ['besucher', 'bearbeiter', 'inhaber'];
