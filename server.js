@@ -136,6 +136,7 @@ function publicUser(u) {
     avatar: u.avatar || null,
     discord_roles: discordRoles,
     created_at: u.created_at,
+    hasPassword: u.hasPassword ? 1 : 0,
   };
 }
 
@@ -143,7 +144,8 @@ async function currentUser(req) {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
   const rows = await db.all(
-    `SELECT u.id, u.email, u.username, u.role, u.verified, u.blocked, u.verify_code, u.created_at, u.avatar, u.discord_roles
+    `SELECT u.id, u.email, u.username, u.role, u.verified, u.blocked, u.verify_code, u.created_at, u.avatar, u.discord_roles,
+            (u.password_hash IS NOT NULL AND u.password_hash != '') AS hasPassword
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ?`,
     [sha256(token)]
@@ -198,7 +200,7 @@ app.post('/api/register', async (req, res) => {
     const token = await startSession(userId);
     setSessionCookie(res, token);
 
-    const u = await db.get('SELECT id, email, username, role, verified, avatar, created_at, discord_roles FROM users WHERE id = ?', [userId]);
+    const u = await db.get('SELECT id, email, username, role, verified, avatar, created_at, discord_roles, (password_hash IS NOT NULL AND password_hash != \'\') AS hasPassword FROM users WHERE id = ?', [userId]);
     res.json({ ok: true, user: publicUser(u), verifyCode });
     discordLog('📝 Neue Registrierung', `**${String(username).trim()}** (${mail}) hat sich registriert. Rolle: ${isOwner ? 'Inhaber' : 'Besucher'}`);
   } catch (e) {
@@ -218,11 +220,32 @@ app.post('/api/login', async (req, res) => {
     if (user.blocked) return res.status(403).json({ error: 'Konto wurde gesperrt.' });
     const token = await startSession(user.id);
     setSessionCookie(res, token);
+    user.hasPassword = user.password_hash ? 1 : 0;
     res.json({ ok: true, user: publicUser(user) });
     discordLog('🔑 Login', `**${user.username}** (${mail}) hat sich per Passwort angemeldet.`);
   } catch (e) {
     console.error('[login]', e);
     res.status(500).json({ error: 'Serverfehler beim Login.' });
+  }
+});
+
+app.post('/api/password', guard(), async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password || String(password).length < 6) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen haben.' });
+    }
+    const row = await db.get('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+    if (row && row.password_hash) {
+      return res.status(400).json({ error: 'Passwort ist bereits festgelegt.' });
+    }
+    const hash = await bcrypt.hash(String(password), 10);
+    await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
+    res.json({ ok: true });
+    discordLog('🔑 Passwort gesetzt', `**${req.user.username}** hat ein Passwort für sein Konto festgelegt.`);
+  } catch (e) {
+    console.error('[password]', e);
+    res.status(500).json({ error: 'Serverfehler beim Setzen des Passworts.' });
   }
 });
 

@@ -523,6 +523,13 @@
           </div>
           <button class="btn-link" id="btn-resend-code">Code erneut senden</button>
         </div>
+        <div id="password-banner" class="verify-banner hidden">
+          <p>Dein Konto hat noch kein Passwort. Lege eines fest, um dich auch per E-Mail anzumelden.</p>
+          <div class="row gap">
+            <input class="input" id="auth-setpass" type="password" minlength="6" placeholder="Mindestens 6 Zeichen" autocomplete="new-password"/>
+            <button class="btn btn-primary" id="btn-setpass">Passwort festlegen</button>
+          </div>
+        </div>
         <button class="btn btn-danger btn-full mt" id="btn-logout">Abmelden</button>
       </div>
     </div>

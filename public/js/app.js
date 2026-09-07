@@ -135,6 +135,7 @@
     $('profile-verified').textContent = u.verified ? '✓ Verifiziert' : '✗ Nicht verifiziert';
     $('profile-verified').className = 'verified' + (u.verified ? '' : ' muted');
     $('verify-banner').classList.toggle('hidden', !!u.verified);
+    $('password-banner').classList.toggle('hidden', !!u.hasPassword);
     renderDiscordRoles(u.discord_roles || []);
   }
 
@@ -167,6 +168,18 @@
       const data = await API.post('/api/verify/resend');
       const sent = await sendVerifyEmail(state.user.email, state.user.username, data.verifyCode);
       toast(sent ? 'Code erneut gesendet.' : 'Dein neuer Code: ' + data.verifyCode, 'ok');
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
+  async function setPassword() {
+    const password = $('auth-setpass').value;
+    if (!password || password.length < 6) { toast('Passwort muss mindestens 6 Zeichen haben.', 'err'); return; }
+    try {
+      await API.post('/api/password', { password });
+      state.user.hasPassword = 1;
+      $('password-banner').classList.add('hidden');
+      $('auth-setpass').value = '';
+      toast('Passwort festgelegt!', 'ok');
     } catch (err) { toast(err.message, 'err'); }
   }
 
@@ -396,6 +409,8 @@
     $('btn-logout').addEventListener('click', logout);
     $('btn-verify').addEventListener('click', verifyCode);
     $('btn-resend-code').addEventListener('click', resendCode);
+    $('btn-setpass').addEventListener('click', setPassword);
+    $('auth-setpass').addEventListener('keydown', (e) => { if (e.key === 'Enter') setPassword(); });
 
     // Verifizierung per Enter
     $('verify-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyCode(); });
