@@ -335,7 +335,12 @@ app.get('/api/auth/discord/callback', async (req, res) => {
     if (!tokenRes.ok) {
       const t = await tokenRes.text();
       console.error('[discord token]', tokenRes.status, t);
-      return res.redirect('/?auth_error=' + encodeURIComponent('Discord-Token konnte nicht getauscht werden.'));
+      let hint = 'Discord-Token konnte nicht getauscht werden.';
+      try {
+        const j = JSON.parse(t);
+        if (j.error) hint += ' (' + j.error + (j.error_description ? ': ' + j.error_description : '') + ')';
+      } catch (e) { /* body egal */ }
+      return res.redirect('/?auth_error=' + encodeURIComponent(hint));
     }
     const { access_token } = await tokenRes.json();
 
