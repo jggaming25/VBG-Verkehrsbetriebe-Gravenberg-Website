@@ -39,7 +39,13 @@ const WEB_DEV_ROLE = 'web_developer';
 const SESSION_COOKIE = 'vbg_session';
 const OAUTH_STATE_COOKIE = 'vbg_oauth_state';
 const SESSION_TTL_DAYS = 30;
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+function originUrl(req) {
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+function baseUrl(req) {
+  return process.env.BASE_URL || originUrl(req) || 'http://localhost:3000';
+}
 
 const ROLES = ['besucher', 'bearbeiter', 'inhaber'];
 
@@ -265,7 +271,7 @@ app.get('/api/auth/discord', (req, res) => {
   if (!clientId) return res.status(503).json({ error: 'Discord Login ist nicht konfiguriert.' });
   const state = crypto.randomBytes(16).toString('hex');
   res.cookie(OAUTH_STATE_COOKIE, state, { httpOnly: true, sameSite: 'lax', secure: IS_PROD, maxAge: 600000 });
-  const redirectUri = `${BASE_URL}/api/auth/discord/callback`;
+  const redirectUri = `${baseUrl(req)}/api/auth/discord/callback`;
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -291,7 +297,7 @@ app.get('/api/auth/discord/callback', async (req, res) => {
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     if (!clientId || !clientSecret) return res.status(503).redirect('/?auth_error=' + encodeURIComponent('Discord Login nicht konfiguriert.'));
 
-    const redirectUri = `${BASE_URL}/api/auth/discord/callback`;
+    const redirectUri = `${baseUrl(req)}/api/auth/discord/callback`;
     const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

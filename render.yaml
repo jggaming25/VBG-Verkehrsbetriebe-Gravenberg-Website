@@ -1,0 +1,23 @@
+﻿services:
+  - type: web
+    name: vbg-verkehrsbetriebe-gravenberg-website
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/ping
+    autoDeploy: true
+    sync: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BASE_URL
+        value: https://vbg-verkehrsbetriebe-gravenberg-website.onrender.com
+      - key: OWNER_EMAILS
+        value: janngenzmann@gmail.com,platzhalter1@gmail.com
+      - key: DISCORD_CLIENT_ID
+        value: 1546062033072427038
+      - key: DISCORD_CLIENT_SECRET
+        value: c96c6309afbcc885716a0e718899223d4bbd8b04c51bf0c740650f2445c1b1bc
+      - key: DISCORD_WEBHOOK_URL
+        value: https://discord.com/api/webhooks/1546105557629272097/BKgveoQVKaQijk-LTHvP94OYKO93V9_qdsekT15-ut5AaUXaTgva4R3RsHyU7Hja_Omx
