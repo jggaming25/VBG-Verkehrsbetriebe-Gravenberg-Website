@@ -1474,8 +1474,12 @@ async function main() {
   await db.init();
   await seedFahrplan();
   app.listen(PORT, () => {
+    const disc = process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET ? 'konfiguriert' : 'FEHLT (DISCORD_CLIENT_ID/SECRET setzen)';
+    const webhook = process.env.DISCORD_WEBHOOK_URL ? 'konfiguriert' : 'FEHLT (optional)';
     console.log(`VBG Server läuft auf Port ${PORT}`);
     console.log(`BASE_URL: ${process.env.BASE_URL || 'http://localhost:3000'}`);
+    console.log(`Discord-Login: ${disc}`);
+    console.log(`Discord-Webhook: ${webhook}`);
   });
 }
 
