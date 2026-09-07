@@ -763,8 +763,8 @@ app.post('/api/tickets/:id/close', guard(['inhaber', 'bearbeiter']), async (req,
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [t.id, req.user.id, `Ticket geschlossen von ${req.user.username}.`]
   );
-  res.json({ ok: true, archive_token: token, archive_url: `${BASE_URL}/archiv/${token}` });
-  discordLog('🔒 Ticket geschlossen', `**${vbgTicketNr(t.id)}** wurde von ${req.user.username} geschlossen.\n📎 Archiv: ${BASE_URL}/archiv/${token}`);
+  res.json({ ok: true, archive_token: token, archive_url: `${baseUrl(req)}/archiv/${token}` });
+  discordLog('🔒 Ticket geschlossen', `**${vbgTicketNr(t.id)}** wurde von ${req.user.username} geschlossen.\n📎 Archiv: ${baseUrl(req)}/archiv/${token}`);
 });
 
 app.post('/api/tickets/:id/reopen', guard(['inhaber', 'bearbeiter']), async (req, res) => {
@@ -1460,7 +1460,7 @@ app.get('/api/ping', (req, res) => res.json({ ok: true, t: Date.now() }));
 
 const PING_INTERVAL = (Number(process.env.PING_INTERVAL_MINUTES) || 4) * 60 * 1000;
 setInterval(() => {
-  fetch(`${BASE_URL}/api/ping`).catch(() => {});
+  fetch(`${process.env.BASE_URL || 'http://localhost:3000'}/api/ping`).catch(() => {});
 }, PING_INTERVAL);
 
 /* ------------------------------ Start ------------------------------ */
@@ -1475,7 +1475,7 @@ async function main() {
   await seedFahrplan();
   app.listen(PORT, () => {
     console.log(`VBG Server läuft auf Port ${PORT}`);
-    console.log(`BASE_URL: ${BASE_URL}`);
+    console.log(`BASE_URL: ${process.env.BASE_URL || 'http://localhost:3000'}`);
   });
 }
 
