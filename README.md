@@ -129,8 +129,12 @@ Mit Discord angemeldete Nutzer sind automatisch **E-Mail-verifiziert** und bekom
 | `DISCORD_CLIENT_ID` | – | optional |
 | `DISCORD_CLIENT_SECRET` | – | optional |
 | `DISCORD_WEBHOOK_URL` | – | optional („VBG Log“-Benachrichtigungen) |
-| `PING_INTERVAL_MINUTES` | `4` | optional (Server-Ticker + keep-alive.js) |
+| `PING_INTERVAL_MINUTES` | `2` | optional (Server-Ticker + keep-alive.js) |
+| `KEEPALIVE_TARGETS` | `https://vbg.onrender.com` | optional (kommagetrennt, nur keep-alive.js) |
 | `TARGET_URL` | `https://vbg.onrender.com` | optional (nur keep-alive.js) |
+| `PING_TIMEOUT_MS` | `15000` | optional (keep-alive.js) |
+| `PING_RETRIES` | `2` | optional (keep-alive.js Wiederholungen) |
+| `PING_RETRY_DELAY_MS` | `8000` | optional (keep-alive.js Wartezeit) |
 | `SESSION_SECRET` | (reserviert) | – |
 
 ---
@@ -172,7 +176,7 @@ VBG Website/
 
 **Ticket-Archiv:** `GET /api/archive/:token` (öffentlich, Read-only) · `GET /archiv/:token` (Read-only-Seite)
 
-**Ping/Keep-Alive:** `GET /api/ping` · `npm run keepalive` (pingt `TARGET_URL`/`BASE_URL` alle `PING_INTERVAL_MINUTES` Min)
+**Ping/Keep-Alive:** `GET /api/ping` · `npm run keepalive` (pingt Render-URL alle `PING_INTERVAL_MINUTES` Min, Standard 2)
 
 **Meldungen (Banner):** `GET /api/notices` (öffentlich) · `POST /api/notices` (Inhaber) · `DELETE /api/notices/:id` (Inhaber)
 
@@ -189,8 +193,8 @@ Render-Prozesse im **Free-Plan** schlafen nach ~15 Min ohne Traffic ein – die 
 
 - **Empfohlen (kostenlos):** externer Uptime-Monitor wie [UptimeRobot](https://uptimerobot.com) (Free: 50 Monitore, pingen alle 5 Min von **verschiedenen Standorten** aus) oder [cron-job.org](https://cron-job.org). Einfach eine URL-„Ping/GET“-Überwachung auf `https://DEINE-RENDER-URL/api/ping` anlegen. Für „immer eine andere IP“ mehrere solcher Dienste nutzen – eine einzelne Instanz hat nur **eine** öffentliche IP und kann „verschiedene IPs pro Ping“ nicht selbst erzeugen.
 - **Render Cron-Job** (Free: 2 Cron-Jobs): planmäßig `GET /api/ping` aufrufen (pingt aber nur von Render-IP).
-- **Lokal/Self-Hosted:** `npm run keepalive` – pingt `TARGET_URL` (oder `BASE_URL`/`http://localhost:3000`) alle `PING_INTERVAL_MINUTES` (Standard 4).
-- Der Server bietet zusätzlich `GET /api/ping` + einen eigenen Ticker (alle 4 Min, via `PING_INTERVAL_MINUTES` konfigurierbar) – das hilft lokal/bei Always-On, ersetzt aber keinen externen Monitor für den Render-Free-Sleep.
+- **Lokal/Self-Hosted:** `npm run keepalive` – pingt die Render-URL (Standard) alle `PING_INTERVAL_MINUTES` Min (Standard **2**). Er liest die lokale `.env`, unterstützt mehrere Ziele via `KEEPALIVE_TARGETS` (kommagetrennt) und wiederholt fehlgeschlagene Pings (Aufwachen des Sleep-Servers). Rollen-Off-Ping: `PING_RETRIES=0`.
+- Der Server bietet zusätzlich `GET /api/ping` + einen eigenen Ticker (alle 2 Min, via `PING_INTERVAL_MINUTES` konfigurierbar) – das hilft lokal/bei Always-On, ersetzt aber keinen externen Monitor für den Render-Free-Sleep.
 
 ---
 

@@ -1486,9 +1486,15 @@ app.delete('/api/nahverkehr/connections/:id', guard(['inhaber']), async (req, re
 
 app.get('/api/ping', (req, res) => res.json({ ok: true, t: Date.now() }));
 
-const PING_INTERVAL = (Number(process.env.PING_INTERVAL_MINUTES) || 4) * 60 * 1000;
+const PING_INTERVAL = (Number(process.env.PING_INTERVAL_MINUTES) || 2) * 60 * 1000;
+const PING_TARGETS = (process.env.KEEPALIVE_TARGETS || process.env.TARGET_URL || process.env.BASE_URL || 'http://localhost:3000')
+  .split(',')
+  .map((s) => String(s).trim().replace(/\/+$/, ''))
+  .filter(Boolean);
 setInterval(() => {
-  fetch(`${process.env.BASE_URL || 'http://localhost:3000'}/api/ping`).catch(() => {});
+  for (const url of PING_TARGETS) {
+    fetch(`${url}/api/ping`, { signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined }).catch(() => {});
+  }
 }, PING_INTERVAL);
 
 /* ------------------------------ Start ------------------------------ */
