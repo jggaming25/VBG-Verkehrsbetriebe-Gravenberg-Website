@@ -187,6 +187,7 @@
     try { await API.post('/api/logout'); } catch (e) { /* ignoriere */ }
     state.user = null;
     updateAuthUI();
+    if (VBG.notifications) VBG.notifications.close();
     toast('Abgemeldet.', 'ok');
     showTab('start');
   }
@@ -202,6 +203,7 @@
     const logged = !!state.user;
     const staff = logged && VBG.isStaff(state.user.role);
     $('auth-buttons').classList.toggle('hidden', logged);
+    $('notif-wrap').classList.toggle('hidden', !logged);
     $('user-chip').classList.toggle('hidden', !logged);
     $('nav-tickets-wrap').classList.toggle('hidden', !logged);
     $('dd-tickets-dashboard').classList.toggle('hidden', !staff);
@@ -216,6 +218,7 @@
     } else {
       $('btn-hero-ticket').textContent = 'Anmelden & Support-Ticket';
     }
+    if (VBG.notifications) VBG.notifications.refresh();
   }
 
   /* ------------------------------ Meldungen (Banner) ------------------------------ */
@@ -431,6 +434,10 @@
     VBG.tickets.bind();
     VBG.nahverkehr.bind();
     VBG.admin.bind();
+    if (VBG.notifications) VBG.notifications.bind();
+
+    // Benachrichtigungen regelmäßig aktualisieren (Badge)
+    setInterval(() => { if (state.user && VBG.notifications) VBG.notifications.refresh(); }, 60000);
   }
 
   function init() {

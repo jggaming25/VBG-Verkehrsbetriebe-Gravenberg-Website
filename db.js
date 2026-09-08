@@ -188,6 +188,41 @@ async function init() {
 
   await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trip_stops_trip_seq ON trip_stops (trip_id, seq)`);
 
+  /* ------------------------------ Benachrichtigungen / Logs / gespeicherte Verbindungen ------------------------------ */
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      message TEXT,
+      read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS saved_connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      data TEXT NOT NULL,
+      until TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS user_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      detail TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await client.execute(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read)`);
+  await client.execute(`CREATE INDEX IF NOT EXISTS idx_saved_connections_user ON saved_connections (user_id)`);
+  await client.execute(`CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs (user_id, created_at)`);
+
   // Migrationen für ältere Schemas
   if (await hasColumn('users', 'password_hash') && !await hasColumn('users', 'discord_id')) {
     await client.execute(`ALTER TABLE users ADD COLUMN discord_id TEXT UNIQUE`);

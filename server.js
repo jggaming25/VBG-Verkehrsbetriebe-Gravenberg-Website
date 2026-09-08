@@ -104,6 +104,46 @@ async function discordLog(title, description, color) {
   }
 }
 
+/* ------------------------------ Nutzer-Logs & Benachrichtigungen ------------------------------ */
+
+function utcStamp(d) {
+  const p = (v) => String(v).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+async function logAction(userId, action, detail) {
+  if (!userId) return;
+  try {
+    await db.run('INSERT INTO user_logs (user_id, action, detail) VALUES (?,?,?)', [userId, String(action).slice(0, 120), detail ? String(detail).slice(0, 500) : null]);
+  } catch (e) {
+    console.error('[user_logs]', e.message);
+  }
+}
+
+async function notifyUser(userId, type, title, message) {
+  if (!userId) return;
+  try {
+    await db.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?,?,?,?)', [userId, String(type || 'info'), String(title || '').slice(0, 120), String(message || '').slice(0, 500)]);
+  } catch (e) {
+    console.error('[notify]', e.message);
+  }
+}
+
+async function notifyStaff(type, title, message) {
+  const rows = await db.all(`SELECT id FROM users WHERE role IN ('inhaber','bearbeiter')`);
+  for (const r of rows) await notifyUser(r.id, type, title, message);
+}
+
+async function pruneNotificationsAndLogs() {
+  try {
+    await db.run(`DELETE FROM user_logs WHERE created_at < datetime('now','-10 days')`);
+    await db.run(`DELETE FROM notifications WHERE read = 1 AND created_at < datetime('now','-30 days')`);
+    await db.run(`DELETE FROM saved_connections WHERE until IS NOT NULL AND until != '' AND until <= datetime('now')`);
+  } catch (e) {
+    console.error('[prune]', e.message);
+  }
+}
+
 function sha256(s) {
   return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
@@ -199,6 +239,7 @@ app.post('/api/register', async (req, res) => {
     const userId = Number(r.lastRowId);
     const token = await startSession(userId);
     setSessionCookie(res, token);
+    logAction(userId, 'Registriert', username.trim());
 
     const u = await db.get('SELECT id, email, username, role, verified, avatar, created_at, discord_roles, (password_hash IS NOT NULL AND password_hash != \'\') AS hasPassword FROM users WHERE id = ?', [userId]);
     res.json({ ok: true, user: publicUser(u), verifyCode });
@@ -222,6 +263,7 @@ app.post('/api/login', async (req, res) => {
     setSessionCookie(res, token);
     user.hasPassword = user.password_hash ? 1 : 0;
     res.json({ ok: true, user: publicUser(user) });
+    logAction(user.id, 'Login', 'Per Passwort angemeldet');
     discordLog('🔑 Login', `**${user.username}** (${mail}) hat sich per Passwort angemeldet.`);
   } catch (e) {
     console.error('[login]', e);
@@ -242,6 +284,7 @@ app.post('/api/password', guard(), async (req, res) => {
     const hash = await bcrypt.hash(String(password), 10);
     await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
     res.json({ ok: true });
+    logAction(req.user.id, 'Passwort festgelegt', '');
     discordLog('🔑 Passwort gesetzt', `**${req.user.username}** hat ein Passwort für sein Konto festgelegt.`);
   } catch (e) {
     console.error('[password]', e);
@@ -271,6 +314,7 @@ app.post('/api/verify', guard(), async (req, res) => {
   }
   await db.run('UPDATE users SET verified = 1, verify_code = NULL WHERE id = ?', [req.user.id]);
   res.json({ ok: true });
+  logAction(req.user.id, 'E-Mail verifiziert', '');
 });
 
 app.post('/api/verify/resend', guard(), async (req, res) => {
@@ -425,6 +469,7 @@ app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
   }
   await db.run('UPDATE users SET role = ? WHERE id = ?', [role, id]);
   res.json({ ok: true });
+  logAction(id, 'Rolle geändert', `von ${target.role} auf ${role} (durch ${req.user.username})`);
   discordLog('🛡️ Rollenänderung', `**${target.email}** wurde von **${target.role}** auf **${role}** geändert (${req.user.username}).`);
 });
 
@@ -451,6 +496,7 @@ app.put('/api/users/:id/block', guard(['inhaber']), async (req, res) => {
   await db.run('UPDATE users SET blocked = ? WHERE id = ?', [blocked, id]);
   if (blocked) await db.run('DELETE FROM sessions WHERE user_id = ?', [id]);
   res.json({ ok: true, blocked });
+  logAction(id, blocked ? 'Konto gesperrt' : 'Konto entsperrt', `durch ${req.user.username}`);
   discordLog(blocked ? '⛔ Konto gesperrt' : '✅ Konto entsperrt', `**${target.email}** wurde ${blocked ? 'gesperrt' : 'entsperrt'} (${req.user.username}).`);
 });
 
@@ -464,9 +510,13 @@ app.delete('/api/users/:id', guard(['inhaber']), async (req, res) => {
   await db.run('DELETE FROM notices WHERE created_by = ?', [id]);
   await db.run('DELETE FROM shifts WHERE created_by = ?', [id]);
   await db.run('DELETE FROM connection_requests WHERE user_id = ?', [id]);
+  await db.run('DELETE FROM notifications WHERE user_id = ?', [id]);
+  await db.run('DELETE FROM saved_connections WHERE user_id = ?', [id]);
+  await db.run('DELETE FROM user_logs WHERE user_id = ?', [id]);
   await db.run('UPDATE connections SET created_by = NULL WHERE created_by = ?', [id]);
   await db.run('DELETE FROM users WHERE id = ?', [id]);
   res.json({ ok: true });
+  logAction(req.user.id, 'Konto gelöscht', target.email);
   discordLog('🗑️ Konto gelöscht', `**${target.email}** wurde gelöscht (${req.user.username}).`);
 });
 
@@ -506,6 +556,7 @@ app.post('/api/shifts', guard(['inhaber']), async (req, res) => {
   );
   res.json({ ok: true, id: Number(r.lastRowId) });
   const hostName = hostId ? (await db.get('SELECT username FROM users WHERE id = ?', [hostId])).username : null;
+  logAction(req.user.id, 'Schicht erstellt', `${String(title).trim()} am ${date} (${time_start})`);
   discordLog('🚍 Neue Schicht', `**${String(title).trim()}** am ${date} (${time_start}${time_end ? '–' + time_end : ''}) von ${req.user.username}${hostName ? '\n🎤 Shifthost: ' + hostName : ''}`);
 });
 
@@ -515,6 +566,7 @@ app.delete('/api/shifts/:id', guard(['inhaber']), async (req, res) => {
   if (!exists) return res.status(404).json({ error: 'Schicht nicht gefunden.' });
   await db.run('DELETE FROM shifts WHERE id = ?', [id]);
   res.json({ ok: true });
+  logAction(req.user.id, 'Schicht gelöscht', exists.title);
   discordLog('🗑️ Schicht gelöscht', `**${exists.title}** wurde entfernt.`);
 });
 
@@ -548,6 +600,7 @@ app.post('/api/notices', guard(['inhaber']), async (req, res) => {
   if (text.length > 300) return res.status(400).json({ error: 'Meldungstext zu lang (max. 300 Zeichen).' });
   const r = await db.run(`INSERT INTO notices (text, created_by) VALUES (?,?)`, [text, req.user.id]);
   res.json({ ok: true, id: Number(r.lastRowId) });
+  logAction(req.user.id, 'Meldung erstellt', text);
   discordLog('⚠️ Neue Meldung', `**${text}**\nErstellt von ${req.user.username}`);
 });
 
@@ -606,6 +659,7 @@ app.post('/api/tickets', guard(), async (req, res) => {
     [newId, req.user.id, `Ticket ${vbgTicketNr(newId)} wurde erstellt von ${req.user.username}.`]
   );
   res.json({ ok: true, id: Number(r.lastRowId), priority });
+  logAction(req.user.id, 'Ticket erstellt', `${vbgTicketNr(newId)} – ${String(subject).trim()}`);
   discordLog('🎫 Neues Ticket', `**${vbgTicketNr(newId)}** – ${String(subject).trim()} (${category}, Priorität: ${priority}) von ${req.user.username}`);
 });
 
@@ -654,11 +708,20 @@ app.post('/api/tickets/:id/messages', guard(), async (req, res) => {
     `INSERT INTO ticket_messages (ticket_id, user_id, message, attachment) VALUES (?,?,?,?)`,
     [t.id, req.user.id, text || null, attachment || null]
   );
+  let autoAssigned = null;
   if (isStaff(req.user) && t.status === 'offen') {
     await db.run(`UPDATE tickets SET status='in_arbeit', assignee_id=?, updated_at=datetime('now') WHERE id=?`, [req.user.id, t.id]);
+    autoAssigned = req.user.id;
   } else {
     await db.run(`UPDATE tickets SET updated_at=datetime('now') WHERE id=?`, [t.id]);
   }
+  // Benachrichtigung an den jeweils anderen Beteiligten (Eröffner ⇄ Bearbeiter)
+  const replyTarget = isStaff(req.user) ? t.user_id : (autoAssigned || t.assignee_id);
+  if (replyTarget && Number(replyTarget) !== Number(req.user.id)) {
+    const snippet = (text || 'Bildnachricht').slice(0, 200);
+    await notifyUser(replyTarget, 'ticket', `Neue Antwort in ${vbgTicketNr(t.id)}`, `${req.user.username}: ${snippet}`);
+  }
+  logAction(req.user.id, 'Ticket-Nachricht', `${vbgTicketNr(t.id)} – ${(text || 'Bildnachricht').slice(0, 150)}`);
   const updated = await db.get('SELECT * FROM tickets WHERE id = ?', [t.id]);
   const messages = await db.all(
     `SELECT m.id, m.user_id, m.message, m.attachment, m.is_system, m.created_at, u.username, u.role, u.avatar
@@ -742,6 +805,10 @@ app.put('/api/tickets/:id', guard(), async (req, res) => {
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [tid, req.user.id, msg]
   );
+  if (Number(t.user_id) !== Number(req.user.id)) {
+    await notifyUser(t.user_id, 'ticket', `${vbgTicketNr(tid)} aktualisiert`, msg);
+  }
+  logAction(req.user.id, 'Ticket bearbeitet', `${vbgTicketNr(tid)}${changes.length ? ': ' + changes.join('; ') : ''}`);
 
   const updated = await db.get('SELECT * FROM tickets WHERE id = ?', [tid]);
   const messages = await db.all(
@@ -763,6 +830,10 @@ app.post('/api/tickets/:id/claim', guard(['inhaber', 'bearbeiter']), async (req,
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [tid, req.user.id, `${req.user.username} hat das Ticket übernommen.`]
   );
+  if (Number(t.user_id) !== Number(req.user.id)) {
+    await notifyUser(t.user_id, 'ticket', `${vbgTicketNr(tid)} übernommen`, `${req.user.username} hat dein Ticket übernommen.`);
+  }
+  logAction(req.user.id, 'Ticket übernommen', vbgTicketNr(tid));
   res.json({ ok: true });
 });
 
@@ -775,6 +846,10 @@ app.post('/api/tickets/:id/unclaim', guard(['inhaber', 'bearbeiter']), async (re
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [tid, req.user.id, `${req.user.username} hat das Ticket abgegeben.`]
   );
+  if (Number(t.user_id) !== Number(req.user.id)) {
+    await notifyUser(t.user_id, 'ticket', `${vbgTicketNr(tid)} wieder offen`, `${req.user.username} hat das Ticket abgegeben.`);
+  }
+  logAction(req.user.id, 'Ticket abgegeben', vbgTicketNr(tid));
   res.json({ ok: true });
 });
 
@@ -791,6 +866,10 @@ app.post('/api/tickets/:id/close', guard(['inhaber', 'bearbeiter']), async (req,
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [t.id, req.user.id, `Ticket geschlossen von ${req.user.username}.`]
   );
+  if (Number(t.user_id) !== Number(req.user.id)) {
+    await notifyUser(t.user_id, 'ticket', `${vbgTicketNr(t.id)} geschlossen`, `Dein Ticket wurde von ${req.user.username} geschlossen.`);
+  }
+  logAction(req.user.id, 'Ticket geschlossen', vbgTicketNr(t.id));
   res.json({ ok: true, archive_token: token, archive_url: `${baseUrl(req)}/archiv/${token}` });
   discordLog('🔒 Ticket geschlossen', `**${vbgTicketNr(t.id)}** wurde von ${req.user.username} geschlossen.\n📎 Archiv: ${baseUrl(req)}/archiv/${token}`);
 });
@@ -803,6 +882,10 @@ app.post('/api/tickets/:id/reopen', guard(['inhaber', 'bearbeiter']), async (req
     `INSERT INTO ticket_messages (ticket_id, user_id, message, is_system) VALUES (?,?,?,1)`,
     [t.id, req.user.id, `Ticket wieder geöffnet von ${req.user.username}.`]
   );
+  if (Number(t.user_id) !== Number(req.user.id)) {
+    await notifyUser(t.user_id, 'ticket', `${vbgTicketNr(t.id)} wieder geöffnet`, `${req.user.username} hat dein Ticket wieder geöffnet.`);
+  }
+  logAction(req.user.id, 'Ticket wieder geöffnet', vbgTicketNr(t.id));
   res.json({ ok: true });
   discordLog('🔓 Ticket wieder geöffnet', `**${vbgTicketNr(t.id)}** wurde von ${req.user.username} wieder geöffnet.`);
 });
@@ -828,6 +911,110 @@ app.get('/api/archive/:token', async (req, res) => {
 
 app.get('/archiv/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'archiv.html'));
+});
+
+/* ------------------------------ Benachrichtigungen ------------------------------ */
+
+app.get('/api/notifications', guard(), async (req, res) => {
+  const rows = await db.all(
+    `SELECT id, type, title, message, read, created_at FROM notifications
+     WHERE user_id = ? ORDER BY (read = 0) DESC, id DESC LIMIT 100`,
+    [req.user.id]
+  );
+  const unread = rows.reduce((n, r) => n + (r.read ? 0 : 1), 0);
+  res.json({ notifications: rows, unread });
+});
+
+app.post('/api/notifications/read', guard(), async (req, res) => {
+  const ids = (req.body || {}).ids;
+  if (Array.isArray(ids) && ids.length) {
+    const nums = ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    if (nums.length) {
+      const ph = nums.map(() => '?').join(',');
+      await db.run(`UPDATE notifications SET read = 1 WHERE user_id = ? AND id IN (${ph})`, [req.user.id, ...nums]);
+    }
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/notifications/read-all', guard(), async (req, res) => {
+  await db.run(`UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0`, [req.user.id]);
+  res.json({ ok: true });
+});
+
+app.delete('/api/notifications', guard(), async (req, res) => {
+  await db.run(`DELETE FROM notifications WHERE user_id = ?`, [req.user.id]);
+  res.json({ ok: true });
+});
+
+/* ------------------------------ Gespeicherte Verbindungen (max. 3) ------------------------------ */
+
+app.get('/api/saved-connections', guard(), async (req, res) => {
+  await db.run(`DELETE FROM saved_connections WHERE user_id = ? AND until IS NOT NULL AND until != '' AND until <= datetime('now')`, [req.user.id]);
+  const rows = await db.all(
+    `SELECT id, label, data, until, created_at FROM saved_connections WHERE user_id = ? ORDER BY id DESC`,
+    [req.user.id]
+  );
+  res.json({
+    connections: rows.map((r) => {
+      let data = null;
+      try { data = JSON.parse(r.data || 'null'); } catch (e) { data = null; }
+      return { id: r.id, label: r.label, data, until: r.until, created_at: r.created_at };
+    })
+  });
+});
+
+app.post('/api/saved-connections', guard(), async (req, res) => {
+  const { label, data, until } = req.body || {};
+  const labelTxt = String(label || '').trim().slice(0, 200);
+  if (!labelTxt || data == null) return res.status(400).json({ error: 'Angaben unvollständig.' });
+  const cnt = await db.get(`SELECT COUNT(*) AS c FROM saved_connections WHERE user_id = ?`, [req.user.id]);
+  if (cnt.c >= 3) {
+    return res.status(400).json({ error: 'Maximal 3 Verbindungen können gespeichert werden – bitte erst eine ältere löschen.' });
+  }
+  let untilTxt = null;
+  if (until && !Number.isNaN(Date.parse(until))) untilTxt = utcStamp(new Date(until));
+  const r = await db.run(
+    `INSERT INTO saved_connections (user_id, label, data, until) VALUES (?,?,?,?)`,
+    [req.user.id, labelTxt, JSON.stringify(data), untilTxt]
+  );
+  res.json({ ok: true, id: Number(r.lastRowId) });
+  logAction(req.user.id, 'Verbindung gespeichert', labelTxt);
+});
+
+app.delete('/api/saved-connections/:id', guard(), async (req, res) => {
+  const id = Number(req.params.id);
+  await db.run(`DELETE FROM saved_connections WHERE id = ? AND user_id = ?`, [id, req.user.id]);
+  res.json({ ok: true });
+});
+
+/* ------------------------------ Admin: Custom-Benachrichtigung & Aktivitäts-Logs ------------------------------ */
+
+app.post('/api/admin/users/:id/notify', guard(['inhaber']), async (req, res) => {
+  const id = Number(req.params.id);
+  const target = await db.get('SELECT id, username FROM users WHERE id = ?', [id]);
+  if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden.' });
+  const message = String((req.body || {}).message || '').trim();
+  if (!message) return res.status(400).json({ error: 'Nachricht darf nicht leer sein.' });
+  if (message.length > 500) return res.status(400).json({ error: 'Nachricht zu lang (max. 500 Zeichen).' });
+  await notifyUser(target.id, 'admin', '📨 Nachricht vom Team', message);
+  res.json({ ok: true });
+  logAction(target.id, 'Benachrichtigung erhalten', `von ${req.user.username}: ${message}`);
+  logAction(req.user.id, 'Benachrichtigung gesendet', `an ${target.username}: ${message}`);
+  discordLog('📨 Team-Nachricht', `${req.user.username} hat **${target.username}** benachrichtigt:\n${message}`);
+});
+
+app.get('/api/admin/users/:id/logs', guard(['inhaber']), async (req, res) => {
+  const id = Number(req.params.id);
+  const target = await db.get('SELECT id, username FROM users WHERE id = ?', [id]);
+  if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden.' });
+  const logs = await db.all(
+    `SELECT action, detail, created_at FROM user_logs
+     WHERE user_id = ? AND created_at >= datetime('now','-10 days')
+     ORDER BY id DESC LIMIT 500`,
+    [id]
+  );
+  res.json({ username: target.username, logs });
 });
 
 /* ------------------------------ Nahverkehr (Fahrplan) ------------------------------ */
@@ -1326,6 +1513,16 @@ app.get('/api/nahverkehr/search', async (req, res) => {
     arr: { stop: arrStop, time: fmtTime(arr) }
   });
 
+  // Suchaktivität protokollieren (max. 1 Eintrag je Minute zur Vermeidung von Spam)
+  const searcher = await currentUser(req);
+  if (searcher) {
+    const lastLog = await db.get(`SELECT created_at FROM user_logs WHERE user_id=? AND action='Verbindungen gesucht' ORDER BY id DESC LIMIT 1`, [searcher.id]);
+    const lastT = lastLog ? new Date(String(lastLog.created_at).replace(' ', 'T') + 'Z').getTime() : 0;
+    if (Date.now() - lastT > 60000) {
+      logAction(searcher.id, 'Verbindungen gesucht', `${fromName} → ${toName} (${timeParam || 'jetzt'})`);
+    }
+  }
+
   res.json({
     from: fromId.name,
     to: toId.name,
@@ -1377,6 +1574,7 @@ app.post('/api/nahverkehr/requests', guard(), async (req, res) => {
     [fromTrip.id, toTrip.id, stopRec.id, req.user.id, 'offen']
   );
   res.json({ ok: true, id: Number(r.lastRowId), fromLine: fromTrip.line, fromCourse: fromTrip.course });
+  logAction(req.user.id, 'Anschlussanfrage gestellt', `Linie ${fromTrip.line} → Linie ${toTrip.line} an ${stopRec.name}`);
   discordLog('🚏 Anschlussanfrage', `${req.user.username} möchte von Linie ${fromTrip.line} auf Linie ${toTrip.line} (Kurs ${toTrip.course}) an ${stopRec.name} umsteigen.`);
 });
 
@@ -1418,12 +1616,26 @@ app.post('/api/nahverkehr/requests/:id/accept', guard(['inhaber']), async (req, 
   );
   await db.run(`UPDATE connection_requests SET status='angenommen' WHERE id = ?`, [r.id]);
   res.json({ ok: true });
+  const fromT = NAH.trips.find((tr) => tr.id === r.from_trip_id);
+  const toT = NAH.trips.find((tr) => tr.id === r.to_trip_id);
+  const stopRec = NAH.stops.find((s) => s.id === r.stop_id);
+  const connDesc = `Linie ${fromT ? fromT.line : '?'} → Linie ${toT ? toT.line : '?'} an ${stopRec ? stopRec.name : '?'}`;
+  await notifyUser(r.user_id, 'connreq', '✅ Anschlussanfrage bestätigt', `Deine Anfrage (${connDesc}) wurde bestätigt – der Anschluss ist jetzt gesichert.`);
+  logAction(r.user_id, 'Anschluss bestätigt', connDesc);
   discordLog('✅ Anschluss bestätigt', `${req.user.username} hat den Anschluss bestätigt (Anfrage #${r.id}).`);
 });
 
 app.post('/api/nahverkehr/requests/:id/decline', guard(['inhaber']), async (req, res) => {
-  await db.run(`UPDATE connection_requests SET status='abgelehnt' WHERE id = ?`, [req.params.id]);
+  const r = await db.get('SELECT * FROM connection_requests WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Anfrage nicht gefunden.' });
+  await db.run(`UPDATE connection_requests SET status='abgelehnt' WHERE id = ?`, [r.id]);
   res.json({ ok: true });
+  const fromT = NAH.trips.find((tr) => tr.id === r.from_trip_id);
+  const toT = NAH.trips.find((tr) => tr.id === r.to_trip_id);
+  const stopRec = NAH.stops.find((s) => s.id === r.stop_id);
+  const connDesc = `Linie ${fromT ? fromT.line : '?'} → Linie ${toT ? toT.line : '?'} an ${stopRec ? stopRec.name : '?'}`;
+  await notifyUser(r.user_id, 'connreq', '❌ Anschlussanfrage abgelehnt', `Deine Anfrage (${connDesc}) wurde abgelehnt – suche am besten eine andere Verbindung.`);
+  logAction(r.user_id, 'Anschluss abgelehnt', connDesc);
 });
 
 app.delete('/api/nahverkehr/requests/:id', guard(['inhaber']), async (req, res) => {
@@ -1496,6 +1708,8 @@ setInterval(() => {
     fetch(`${url}/api/ping`, { signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined }).catch(() => {});
   }
 }, PING_INTERVAL);
+
+setInterval(pruneNotificationsAndLogs, 60 * 60 * 1000);
 
 /* ------------------------------ Start ------------------------------ */
 

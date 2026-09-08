@@ -4,6 +4,7 @@ VBG.admin = (function () {
   let nvLines = [];
   let nvCourses = [];
   let nvActive = { line: null, course: null };
+  let notifyTarget = { id: null, name: '' };
 
   /* ------------------------------ Nahverkehr Steuerung ------------------------------ */
 
@@ -32,7 +33,6 @@ VBG.admin = (function () {
       const reqs = await API.get('/api/nahverkehr/requests');
       const conns = await API.get('/api/nahverkehr/connections');
       nvLineOptions(document.getElementById('act-line'));
-      nvLineOptions(document.getElementById('cancel-line'));
       if (nvActive.line) document.getElementById('act-line').value = nvActive.line;
       if (nvActive.course) {
         nvCourseOptions(document.getElementById('act-course'));
@@ -40,11 +40,8 @@ VBG.admin = (function () {
       } else {
         nvCourseOptions(document.getElementById('act-course'));
       }
-      nvCourseOptions(document.getElementById('cancel-course'));
-      nvLineOptions(document.getElementById('trip-line'));
-      nvCourseOptions(document.getElementById('trip-course'));
       renderActive();
-      renderCancels(cancels.cancellations || null);
+      renderCancelOverview(cancels.cancellations || null);
       renderRequests(reqs.requests || []);
       renderConns(conns.connections || []);
       loadTrips();
@@ -84,114 +81,101 @@ VBG.admin = (function () {
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  function renderCancels(list) {
-    const wrap = document.getElementById('cancel-list');
-    list = list || { courses: [], trips: [], stops: [] };
-    const html = [];
-    if (list.courses && list.courses.length) {
-      html.push(`<div class="cancel-group"><div class="report-meta">Ganze Kurse</div>${list.courses.map((c) => `<span class="chip chip-cancel" data-uncancelcourse="${esc(c.line + '|' + c.course)}" title="Wieder aktivieren">🚫 L${esc(c.line)} Kurs ${esc(c.course)} · ✕</span>`).join('')}</div>`);
-    }
-    if (list.trips && list.trips.length) {
-      html.push(`<div class="cancel-group"><div class="report-meta">Einzelne Fahrten</div>${list.trips.map((t) => `<span class="chip chip-cancel" data-uncanceltrip="${t.id}" title="Wieder aktivieren">🚫 L${esc(t.line)} Kurs ${esc(t.course)} ${esc(t.direction)} ${esc(t.start)} · ✕</span>`).join('')}</div>`);
-    }
-    if (list.stops && list.stops.length) {
-      html.push(`<div class="cancel-group"><div class="report-meta">Haltestellen-Ausfälle</div>${list.stops.map((s) => `<span class="chip chip-cancel" data-uncancelstop="${esc(s.tripId + '|' + s.stopId)}" title="Wieder aktivieren">🚫 ${esc(s.stop)} · L${esc(s.line)} Kurs ${esc(s.course)} ${esc(s.direction)} ${esc(s.start)} · ✕</span>`).join('')}</div>`);
-    }
-    wrap.innerHTML = html.length ? html.join('') : '<p class="muted">Keine Ausfälle.</p>';
-  }
+  /* ------------------------------ Fahrtliste + Ausfälle ------------------------------ */
 
-  async function cancelKurs() {
-    const line = document.getElementById('cancel-line').value;
-    const course = Number(document.getElementById('cancel-course').value);
-    if (!line || !course) return;
-    if (!confirm(`Kurs ${course} der Linie ${line} wirklich ausfallen lassen? Alle Fahrten dieses Kurses werden ausgesetzt.`)) return;
-    try {
-      const data = await API.post('/api/nahverkehr/cancel-kurs', { line, course });
-      toast(`${data.count} Fahrten ausgesetzt.`, 'ok');
-      loadSteuerung();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  async function restoreKurs() {
-    const line = document.getElementById('cancel-line').value;
-    const course = Number(document.getElementById('cancel-course').value);
-    if (!line || !course) return;
-    try {
-      await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
-      toast('Kurs wieder aktiv.', 'ok');
-      loadSteuerung();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  async function restoreCourseByKey(key) {
-    const [line, course] = key.split('|');
-    try {
-      await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
-      toast('Kurs wieder aktiv.', 'ok');
-      loadSteuerung();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  /* ------------------------------ Einzelne Fahrten / Halte ------------------------------ */
+  let allTrips = [];
+  let openTripId = null;
 
   async function loadTrips() {
-    const line = document.getElementById('trip-line').value;
-    const course = document.getElementById('trip-course').value;
-    const dir = document.getElementById('trip-dir').value;
-    const sel = document.getElementById('trip-select');
-    if (!line || !course || !dir) { sel.innerHTML = ''; await loadTripDetail(null); return; }
     try {
-      const data = await API.get(`/api/nahverkehr/trips?line=${encodeURIComponent(line)}&course=${course}&direction=${encodeURIComponent(dir)}`);
-      const trips = data.trips || [];
-      sel.innerHTML = trips.map((t) => `<option value="${t.id}">${esc(t.start)} ${t.direction === 'hin' ? '→' : '←'} ${esc(t.dest)}${t.cancelled ? ' · 🚫 ausgefallen' : ''}</option>`).join('');
-      await loadTripDetail(sel.value || null);
+      const data = await API.get('/api/nahverkehr/trips');
+      allTrips = data.trips || [];
+      const lineSel = document.getElementById('trip-line-filter');
+      const lines = [...new Set(allTrips.map((t) => t.line))].sort();
+      fillSelect(lineSel, [''].concat(lines).map((l) => ({ value: l, label: l ? 'Linie ' + l : 'Alle Linien' })));
+      renderTrips();
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  async function loadTripDetail(id) {
-    const info = document.getElementById('trip-stops');
-    if (!id) {
-      document.getElementById('trip-cancel').disabled = true;
-      document.getElementById('trip-restore').disabled = true;
-      info.innerHTML = '<p class="muted">Keine Fahrt gewählt.</p>';
+  function filteredTrips() {
+    const q = (document.getElementById('trip-filter').value || '').toLowerCase().trim();
+    const line = document.getElementById('trip-line-filter').value;
+    return allTrips.filter((t) => {
+      if (line && t.line !== line) return false;
+      if (!q) return true;
+      return (t.line + ' ' + t.course + ' ' + t.direction + ' ' + t.start + ' ' + t.end + ' ' + t.dest).toLowerCase().includes(q);
+    });
+  }
+
+  function renderTrips() {
+    const wrap = document.getElementById('trip-list');
+    const list = filteredTrips();
+    if (!list.length) {
+      wrap.innerHTML = '<p class="muted">Keine Fahrten gefunden.</p>';
       return;
     }
-    try {
-      const t = await API.get('/api/nahverkehr/trips/' + id);
-      document.getElementById('trip-cancel').disabled = t.cancelled;
-      document.getElementById('trip-restore').disabled = !t.cancelled;
-      info.innerHTML = t.stops.length
-        ? `<div class="trip-meta">${t.stops.length} Halte · Bus: ${esc(t.bus || 'Solo')}</div>
-           <div class="stop-list">${t.stops.map((s) => `
-             <div class="stop-item${s.cancelled ? ' cancelled' : ''}">
-               <div class="stop-no">${s.seq + 1}</div>
-               <div class="stop-main"><b>${esc(s.stop)}</b><div class="report-meta">an ${esc(s.arr)} · ab ${esc(s.dep)}</div></div>
-               <button class="btn btn-sm ${s.cancelled ? 'btn-ghost' : 'btn-danger'}" data-stopid="${s.stopId}" data-cancelled="${s.cancelled ? '1' : '0'}">${s.cancelled ? '✅ Teil wieder' : '🚫 Halt ausfallen'}</button>
-             </div>`).join('')}</div>`
-        : '<p class="muted">Keine Haltestellen-Daten.</p>';
-    } catch (e) { toast(e.message, 'err'); }
+    wrap.innerHTML = list.map((t) => {
+      const dir = t.direction === 'hin' ? '→' : '←';
+      const cls = t.cancelled ? 'cancelled' : '';
+      const shown = openTripId === t.id;
+      return `<div class="trip-row ${cls}">
+        <div class="trip-row-main">
+          <div class="trip-row-info">
+            <span class="bl-chip" style="--bl:${esc(t.color || '#2e9e5b')}">L${esc(t.line)}</span>
+            <b>${esc(t.course)}</b>
+            <span class="muted">${dir} ${esc(t.start)} – ${esc(t.dest)}</span>
+            ${t.cancelled ? '<span class="badge badge-p-hoch">🚫 ausgefallen</span>' : ''}
+          </div>
+          <div class="req-actions">
+            <button class="btn btn-sm ${t.cancelled ? 'btn-ghost' : 'btn-danger'}" data-trip-toggle="${t.id}" data-cancelled="${t.cancelled ? '1' : '0'}">${t.cancelled ? '✅ Wieder fahren' : '🚫 Fahrt fällt aus'}</button>
+            <button class="btn btn-sm btn-primary" data-trip-detail="${t.id}">${shown ? 'Detail schließen' : 'Detail'}</button>
+          </div>
+        </div>
+        ${shown ? `<div class="trip-detail" data-trip-detailbox="${t.id}"><p class="muted">Lade Halte …</p></div>` : ''}
+      </div>`;
+    }).join('');
+    if (openTripId) renderTripDetail(openTripId, 'load');
   }
 
-  async function cancelTrip() {
-    const id = document.getElementById('trip-select').value;
-    if (!id) return;
-    if (!confirm('Diese einzelne Fahrt wirklich ausfallen lassen?')) return;
+  async function renderTripDetail(id, state) {
+    const box = document.querySelector(`[data-trip-detailbox="${id}"]`);
+    if (!box) return;
+    if (state === 'load') {
+      box.innerHTML = '<p class="muted">Lade Halte …</p>';
+      try {
+        const t = await API.get('/api/nahverkehr/trips/' + id);
+        if (openTripId !== Number(id)) return;
+        box.innerHTML = `<div class="trip-meta">${t.stops.length} Halte · Bus: ${esc(fmtBus(t.bus))}</div>
+          <div class="stop-list">${t.stops.map((s) => `
+            <div class="stop-item${s.cancelled ? ' cancelled' : ''}">
+              <div class="stop-no">${s.seq + 1}</div>
+              <div class="stop-main"><b>${esc(s.stop)}</b><div class="report-meta">an ${esc(s.arr)} · ab ${esc(s.dep)}</div></div>
+              <button class="btn btn-sm ${s.cancelled ? 'btn-ghost' : 'btn-danger'}" data-stopid="${s.stopId}" data-trip="${t.id}" data-cancelled="${s.cancelled ? '1' : '0'}">${s.cancelled ? '✅ Teil wieder' : '🚫 Halt ausfallen'}</button>
+            </div>`).join('')}</div>`;
+        box.querySelectorAll('[data-stopid]').forEach((b) => b.addEventListener('click', () => toggleStop(b)));
+      } catch (e) { box.innerHTML = '<p class="muted">Halte konnten nicht geladen werden.</p>'; }
+      return;
+    }
+    const t = allTrips.find((x) => x.id === Number(id));
+    if (t) {
+      const dir = t.direction === 'hin' ? '→' : '←';
+      box.innerHTML = `<div class="trip-meta">Fahrt L${esc(t.line)} Kurs ${esc(t.course)} ${dir} ${esc(t.start)} – ${esc(t.dest)}</div>
+        <div class="stop-list"><p class="muted">Keine Details geladen.</p></div>`;
+    }
+  }
+
+  function fmtBus(b) { return b || 'Solo'; }
+
+  function toggleTripRow(id, cancelled) {
+    if (cancelled) restoreTripById(id); else cancelTripId(id);
+  }
+
+  async function cancelTripId(id) {
+    if (!confirm('Diese Fahrt wirklich ausfallen lassen? Sie erscheint dann nicht mehr in der Abfahrtstafel.')) return;
     try {
       await API.post('/api/nahverkehr/trips/' + id + '/cancel');
-      toast('Einzelne Fahrt ausgesetzt.', 'ok');
+      toast('Fahrt ausgesetzt.', 'ok');
       loadSteuerung();
-      loadTrips();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  async function restoreTrip() {
-    const id = document.getElementById('trip-select').value;
-    if (!id) return;
-    try {
-      await API.del('/api/nahverkehr/trips/' + id + '/cancel');
-      toast('Einzelne Fahrt wieder aktiv.', 'ok');
-      loadSteuerung();
-      loadTrips();
     } catch (e) { toast(e.message, 'err'); }
   }
 
@@ -203,21 +187,11 @@ VBG.admin = (function () {
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  async function toggleStop(btn) {
-    const tripId = document.getElementById('trip-select').value;
-    if (!tripId) return;
-    const stopId = Number(btn.dataset.stopid);
-    const cancelled = btn.dataset.cancelled === '1';
+  async function restoreCourseByKey(line, course) {
     try {
-      if (cancelled) {
-        await API.del(`/api/nahverkehr/trips/${tripId}/stop-cancel?stopId=${stopId}`);
-        toast('Halt wird wieder bedient.', 'ok');
-      } else {
-        await API.post(`/api/nahverkehr/trips/${tripId}/stop-cancel`, { stopId });
-        toast('Halt ausgesetzt.', 'ok');
-      }
+      await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
+      toast('Kurs wieder aktiv.', 'ok');
       loadSteuerung();
-      loadTripDetail(tripId);
     } catch (e) { toast(e.message, 'err'); }
   }
 
@@ -227,6 +201,38 @@ VBG.admin = (function () {
       toast('Halt wieder bedient.', 'ok');
       loadSteuerung();
     } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function toggleStop(btn) {
+    const tripId = Number(btn.dataset.trip);
+    const stopId = Number(btn.dataset.stopid);
+    const cancelled = btn.dataset.cancelled === '1';
+    try {
+      if (cancelled) {
+        await API.del(`/api/nahverkehr/trips/${tripId}/stop-cancel?stopId=${stopId}`);
+      } else {
+        await API.post(`/api/nahverkehr/trips/${tripId}/stop-cancel`, { stopId });
+      }
+      toast(cancelled ? 'Halt wird wieder bedient.' : 'Halt ausgesetzt.', 'ok');
+      loadSteuerung();
+      renderTripDetail(tripId, 'load');
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function renderCancelOverview(list) {
+    const wrap = document.getElementById('cancel-list-ov');
+    list = list || { courses: [], trips: [], stops: [] };
+    const chips = [];
+    if (list.courses && list.courses.length) {
+      chips.push(list.courses.map((c) => `<span class="chip chip-cancel" data-uncancelcourse="${esc(c.line + '|' + c.course)}" title="Wieder aktivieren">🚫 L${esc(c.line)} Kurs ${esc(c.course)} · ✕</span>`).join(''));
+    }
+    if (list.trips && list.trips.length) {
+      chips.push(list.trips.map((t) => `<span class="chip chip-cancel" data-uncanceltrip="${t.id}" title="Wieder aktivieren">🚫 Fahrt L${esc(t.line)} K${esc(t.course)} ${esc(t.direction)} ${esc(t.start)} · ✕</span>`).join(''));
+    }
+    if (list.stops && list.stops.length) {
+      chips.push(list.stops.map((s) => `<span class="chip chip-cancel" data-uncancelstop="${esc(s.tripId + '|' + s.stopId)}" title="Wieder aktivieren">🚫 ${esc(s.stop)} · K${esc(s.course)} ${esc(s.start)} · ✕</span>`).join(''));
+    }
+    wrap.innerHTML = chips.length ? chips.join('') : '';
   }
 
   function renderRequests(list) {
@@ -315,6 +321,9 @@ VBG.admin = (function () {
         <td>${status}</td>
         <td class="muted">${esc(fmtDateISO(u.created_at))}</td>
         <td class="user-actions">
+          ${canEdit ? `
+            <button class="btn btn-sm btn-ghost" data-notifyfor="${u.id}" title="Benachrichtigung senden">📨</button>
+            <button class="btn btn-sm btn-ghost" data-logsfor="${u.id}" title="Aktivitäts-Logs ansehen (letzte 10 Tage)">📜</button>` : ''}
           ${canAct ? `
             <button class="btn btn-sm ${u.blocked ? 'btn-ghost' : 'btn-danger'}" data-blockfor="${u.id}" data-block="${u.blocked ? '0' : '1'}">${u.blocked ? '✅ Entsperren' : '⛔ Sperren'}</button>
             <button class="btn btn-sm btn-danger" data-delfor="${u.id}" title="Konto löschen">🗑️</button>` : ''}
@@ -398,6 +407,49 @@ VBG.admin = (function () {
     } catch (err) { toast(err.message, 'err'); }
   }
 
+  /* ------------------------------ Acc-Logs & Team-Benachrichtigung ------------------------------ */
+
+  async function openLogs(userId, username) {
+    document.getElementById('logs-target').textContent = `Aktivitäten von ${username} · letzte 10 Tage`;
+    const body = document.getElementById('logs-body');
+    body.innerHTML = '<p class="muted">Logs werden geladen …</p>';
+    openModal('modal-logs');
+    try {
+      const data = await API.get('/api/admin/users/' + userId + '/logs');
+      body.innerHTML = data.logs.length
+        ? data.logs.map((l) => `
+            <div class="log-item">
+              <div class="log-action">${esc(l.action)}</div>
+              ${l.detail ? `<div class="log-detail">${esc(l.detail)}</div>` : ''}
+              <div class="log-time">${esc(fmtDateTime(l.created_at))}</div>
+            </div>`).join('')
+        : '<div class="empty-state"><div class="big">📭</div><p>Keine Aktivitäten in den letzten 10 Tagen.</p></div>';
+    } catch (e) {
+      body.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+    }
+  }
+
+  function openNotify(userId, username) {
+    notifyTarget = { id: userId, name: username };
+    document.getElementById('notify-target').textContent = 'An: ' + username;
+    document.getElementById('notify-text').value = '';
+    openModal('modal-notify');
+    setTimeout(() => document.getElementById('notify-text').focus(), 60);
+  }
+
+  async function sendNotify() {
+    const text = document.getElementById('notify-text').value.trim();
+    if (!text) { toast('Bitte eine Nachricht angeben.', 'err'); return; }
+    try {
+      await API.post('/api/admin/users/' + notifyTarget.id + '/notify', { message: text });
+      toast('Benachrichtigung an ' + notifyTarget.name + ' gesendet.', 'ok');
+      closeModal('modal-notify');
+      if (VBG.notifications) VBG.notifications.refresh();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
   function bind() {
     document.getElementById('users-tbody').addEventListener('change', (e) => {
       const sel = e.target.closest('[data-rolefor]');
@@ -407,29 +459,34 @@ VBG.admin = (function () {
       const b = e.target.closest('[data-blockfor]');
       if (b) { blockUser(Number(b.dataset.blockfor), b.dataset.block === '1'); return; }
       const d = e.target.closest('[data-delfor]');
-      if (d) { removeUser(Number(d.dataset.delfor), d.closest('tr').querySelector('b').textContent); }
+      if (d) { removeUser(Number(d.dataset.delfor), d.closest('tr').querySelector('b').textContent); return; }
+      const n = e.target.closest('[data-notifyfor]');
+      if (n) { const tr = n.closest('tr'); openNotify(Number(n.dataset.notifyfor), tr.querySelector('b').textContent); return; }
+      const l = e.target.closest('[data-logsfor]');
+      if (l) { const tr = l.closest('tr'); openLogs(Number(l.dataset.logsfor), tr.querySelector('b').textContent); }
     });
+    document.getElementById('notify-send').addEventListener('click', sendNotify);
     document.getElementById('user-search').addEventListener('input', render);
     document.getElementById('notice-form').addEventListener('submit', submitNotice);
     document.getElementById('act-line').addEventListener('change', () => nvCourseOptions(document.getElementById('act-course')));
-    document.getElementById('cancel-line').addEventListener('change', () => nvCourseOptions(document.getElementById('cancel-course')));
     document.getElementById('act-set').addEventListener('click', setActive);
     document.getElementById('act-clear').addEventListener('click', clearActive);
-    document.getElementById('cancel-set').addEventListener('click', cancelKurs);
-    document.getElementById('cancel-restore').addEventListener('click', restoreKurs);
-    document.getElementById('trip-line').addEventListener('change', () => { nvCourseOptions(document.getElementById('trip-course')); loadTrips(); });
-    document.getElementById('trip-course').addEventListener('change', loadTrips);
-    document.getElementById('trip-dir').addEventListener('change', loadTrips);
-    document.getElementById('trip-select').addEventListener('change', (e) => loadTripDetail(e.target.value));
-    document.getElementById('trip-cancel').addEventListener('click', cancelTrip);
-    document.getElementById('trip-restore').addEventListener('click', restoreTrip);
-    document.getElementById('trip-stops').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-stopid]');
-      if (b) toggleStop(b);
+    document.getElementById('trip-filter').addEventListener('input', renderTrips);
+    document.getElementById('trip-line-filter').addEventListener('change', renderTrips);
+    document.getElementById('trip-list').addEventListener('click', (e) => {
+      const t = e.target.closest('[data-trip-toggle]');
+      if (t) { toggleTripRow(Number(t.dataset.tripToggle), t.dataset.cancelled === '1'); return; }
+      const d = e.target.closest('[data-trip-detail]');
+      if (d) {
+        const id = Number(d.dataset.tripDetail);
+        openTripId = openTripId === id ? null : id;
+        renderTrips();
+        return;
+      }
     });
-    document.getElementById('cancel-list').addEventListener('click', (e) => {
+    document.getElementById('cancel-list-ov').addEventListener('click', (e) => {
       const c = e.target.closest('[data-uncancelcourse]');
-      if (c) { restoreCourseByKey(c.dataset.uncancelcourse); return; }
+      if (c) { const [line, course] = c.dataset.uncancelcourse.split('|'); restoreCourseByKey(line, course); return; }
       const t = e.target.closest('[data-uncanceltrip]');
       if (t) { restoreTripById(Number(t.dataset.uncanceltrip)); return; }
       const s = e.target.closest('[data-uncancelstop]');

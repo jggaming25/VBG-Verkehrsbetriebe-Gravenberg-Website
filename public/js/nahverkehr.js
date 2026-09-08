@@ -3,6 +3,12 @@ VBG.nahverkehr = (function () {
   let stops = [];
   let lines = [];
   let kind = 'abfahrt';
+  let lastDirect = [];
+  let lastTransfers = [];
+  let lastFrom = '';
+  let lastTo = '';
+  let lastTime = '';
+  let savedList = [];
 
   function $id(id) { return document.getElementById(id); }
 
@@ -93,6 +99,7 @@ VBG.nahverkehr = (function () {
     if (!from.value || !to.value) return;
     const fromName = from.options[from.selectedIndex].text.replace(/^🚏 /, '');
     const toName = to.options[to.selectedIndex].text.replace(/^🚏 /, '');
+    lastFrom = fromName; lastTo = toName; lastTime = time;
     const btn = $id('search-run');
     btn.disabled = true;
     try {
@@ -115,7 +122,16 @@ VBG.nahverkehr = (function () {
     </div>`;
   }
 
+  function saveBtn(kind, idx) {
+    if (!VBG.state || !VBG.state.user) return '';
+    return `<div class="conn-save-row"><button class="btn btn-sm btn-ghost" data-saveconn="${kind}:${idx}" title="Verbindung speichern (max. 3, wird nach Fahrtende automatisch entfernt)">💾 Speichern</button></div>`;
+  }
+
   function renderSearch(data) {
+    lastDirect = data.direct || [];
+    lastTransfers = data.transfers || [];
+    lastFrom = data.from || lastFrom;
+    lastTo = data.to || lastTo;
     const wrap = $id('search-results');
     const blocks = [];
     if (!data.direct.length && !data.transfers.length) {
@@ -123,18 +139,92 @@ VBG.nahverkehr = (function () {
       return;
     }
     if (data.direct.length) {
-      blocks.push(`<div class="conn-result"><h3>🚌 Direktverbindungen</h3>${data.direct.map(searchLeg).join('')}</div>`);
+      blocks.push(`<div class="conn-result"><h3>🚌 Direktverbindungen</h3>${data.direct.map((x, i) => searchLeg(x) + saveBtn('d', i)).join('')}</div>`);
     }
     if (data.transfers.length) {
-      blocks.push(`<div class="conn-result"><h3>🔁 Mit Umstieg</h3>${data.transfers.map((x) => `
+      blocks.push(`<div class="conn-result"><h3>🔁 Mit Umstieg</h3>${data.transfers.map((x, i) => `
         <div class="conn-transfer${x.official ? ' conn-official' : ''}">
           ${x.official ? '<span class="badge badge-conn">gesichert</span>' : ''}
           ${searchLeg(x.leg1)}
           <div class="conn-wait">🚏 Umstieg in <b>${esc(x.via)}</b> · <b>${x.waitMin} Min.</b> Wartezeit</div>
           ${searchLeg(x.leg2)}
+          ${saveBtn('t', i)}
         </div>`).join('')}</div>`);
     }
     wrap.innerHTML = blocks.join('');
+  }
+
+  /* ------------------------------ Gespeicherte Verbindungen ------------------------------ */
+
+  function fahrtEndeISO(time) {
+    const [h, m] = String(time).split(':').map(Number);
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const p = (t) => Number((parts.find((x) => x.type === t) || {}).value || 0);
+    let d = new Date(Date.UTC(p('year'), p('month') - 1, p('day'), h, m));
+    if (d.getTime() < Date.now()) d = new Date(d.getTime() + 86400000);
+    return d.toISOString();
+  }
+
+  function connLabel(kind, res) {
+    if (kind === 'd') {
+      return `L${res.line} ${res.dep.time} ${res.dep.stop} → ${res.arr.time} ${res.arr.stop}`;
+    }
+    return `L${res.leg1.line} ${res.leg1.dep.time} ${res.leg1.dep.stop} → Umstieg (${res.waitMin} Min.) → L${res.leg2.line} ${res.leg2.arr.time} ${res.leg2.arr.stop}`;
+  }
+
+  async function saveConn(key) {
+    const [kind, idx] = key.split(':');
+    const res = kind === 'd' ? lastDirect[Number(idx)] : lastTransfers[Number(idx)];
+    if (!res) return;
+    const legs = kind === 'd' ? [res] : [res.leg1, res.leg2];
+    const until = fahrtEndeISO(legs[legs.length - 1].arr.time);
+    const data = { kind, res, from: lastFrom, to: lastTo };
+    try {
+      const r = await API.post('/api/saved-connections', { label: connLabel(kind, res), data, until });
+      savedList = savedList.concat([{ id: r.id }]);
+      toast('Verbindung gespeichert (max. 3).', 'ok');
+      loadSaved();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  async function loadSaved() {
+    const wrap = $id('saved-conns');
+    if (!VBG.state || !VBG.state.user) { wrap.innerHTML = ''; wrap.classList.remove('saved-visible'); return; }
+    try {
+      const data = await API.get('/api/saved-connections');
+      savedList = data.connections || [];
+      if (!savedList.length) { wrap.innerHTML = ''; wrap.classList.remove('saved-visible'); return; }
+      wrap.classList.add('saved-visible');
+      wrap.innerHTML = `<div class="saved-head"><h3>💾 Gespeicherte Verbindungen</h3><span class="muted">${savedList.length}/3 · werden nach Fahrtende entfernt</span></div>` +
+        savedList.map((c) => `
+          <div class="saved-conn">
+            <button class="saved-main" data-viewconn="${c.id}">
+              <span class="saved-label">${esc(c.label)}</span>
+              ${c.until ? `<span class="saved-until">✖ ab ${esc(fmtDateTime(c.until))}</span>` : ''}
+            </button>
+            <button class="btn btn-sm btn-danger" data-delsaved="${c.id}" title="Entfernen">✕</button>
+          </div>`).join('');
+    } catch (e) { /* optionale Zusatzfunktion */ }
+  }
+
+  function showSaved(id) {
+    const c = savedList.find((x) => Number(x.id) === Number(id));
+    if (!c || !c.data || !c.data.res) return;
+    const d = c.data;
+    const data = { from: d.from || '', to: d.to || '', direct: d.kind === 'd' ? [d.res] : [], transfers: d.kind === 't' ? [d.res] : [] };
+    renderSearch(data);
+    const el = $id('search-results');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function deleteSaved(id) {
+    try {
+      await API.del('/api/saved-connections/' + id);
+      toast('Verbindung entfernt.', 'ok');
+      loadSaved();
+    } catch (e) { toast(e.message, 'err'); }
   }
 
   function showTabNahverkehr() {
@@ -170,12 +260,23 @@ VBG.nahverkehr = (function () {
       const b = e.target.closest('.conn-request');
       if (b) requestConnection(Number(b.dataset.trip), b.dataset.line, b.dataset.fline);
     });
+    $id('search-results').addEventListener('click', (e) => {
+      const s = e.target.closest('[data-saveconn]');
+      if (s) saveConn(s.dataset.saveconn);
+    });
+    $id('saved-conns').addEventListener('click', (e) => {
+      const del = e.target.closest('[data-delsaved]');
+      if (del) { deleteSaved(Number(del.dataset.delsaved)); return; }
+      const v = e.target.closest('[data-viewconn]');
+      if (v) showSaved(Number(v.dataset.viewconn));
+    });
     window.showTabNahverkehr = showTabNahverkehr;
   }
 
   async function load() {
     await loadMeta();
     await loadBoard();
+    await loadSaved();
   }
 
   return { bind, load, search, loadBoard };
