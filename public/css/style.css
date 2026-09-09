@@ -637,7 +637,7 @@ select.input { appearance: none; cursor: pointer; }
 
 .trip-meta { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
 .trip-list { display: flex; flex-direction: column; gap: 6px; max-height: 460px; overflow-y: auto; }
-.trip-row { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.trip-row { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; flex-shrink: 0; }
 .trip-row.cancelled { opacity: 0.6; background: var(--danger-soft); }
 .trip-row-main { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; flex-wrap: wrap; }
 .trip-row-info { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
@@ -645,7 +645,7 @@ select.input { appearance: none; cursor: pointer; }
 .trip-filter-row { margin-bottom: 8px; }
 .trip-filter-row .input { flex: 1; }
 .stop-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
-.stop-item { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 8px 10px; }
+.stop-item { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 8px 10px; flex-shrink: 0; }
 .stop-item .stop-no { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--surface-hover); font-size: 12px; font-weight: 700; }
 .stop-item .stop-main { flex: 1; min-width: 0; }
 .stop-item.cancelled { opacity: 0.55; background: var(--danger-soft); }
