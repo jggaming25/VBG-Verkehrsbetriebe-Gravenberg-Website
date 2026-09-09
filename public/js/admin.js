@@ -78,8 +78,10 @@ VBG.admin = (function () {
       const data = await API.get('/api/nahverkehr/trips');
       allTrips = data.trips || [];
       const lineSel = document.getElementById('trip-line-filter');
+      const cur = lineSel.value;
       const lines = [...new Set(allTrips.map((t) => t.line))].sort();
       fillSelect(lineSel, [''].concat(lines).map((l) => ({ value: l, label: l ? 'Linie ' + l : 'Alle Linien' })));
+      if (cur && lines.includes(cur)) lineSel.value = cur;
       renderTrips();
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -157,20 +159,26 @@ VBG.admin = (function () {
     if (cancelled) restoreTripById(id); else cancelTripId(id);
   }
 
+  function setTripCancelled(id, cancelled) {
+    const t = allTrips.find((x) => x.id === Number(id));
+    if (t) t.cancelled = cancelled;
+    renderTrips();
+  }
+
   async function cancelTripId(id) {
     if (!confirm('Diese Fahrt wirklich ausfallen lassen? Sie erscheint dann nicht mehr in der Abfahrtstafel.')) return;
     try {
       await API.post('/api/nahverkehr/trips/' + id + '/cancel');
       toast('Fahrt ausgesetzt.', 'ok');
-      loadSteuerung();
+      setTripCancelled(id, true);
     } catch (e) { toast(e.message, 'err'); }
   }
 
-async function restoreTripById(id) {
+  async function restoreTripById(id) {
     try {
       await API.del('/api/nahverkehr/trips/' + id + '/cancel');
       toast('Fahrt fährt wieder.', 'ok');
-      loadSteuerung();
+      setTripCancelled(id, false);
     } catch (e) { toast(e.message, 'err'); }
   }
 
@@ -193,7 +201,6 @@ async function restoreTripById(id) {
         await API.post(`/api/nahverkehr/trips/${tripId}/stop-cancel`, { stopId });
       }
       toast(cancelled ? 'Halt wird wieder bedient.' : 'Halt ausgesetzt.', 'ok');
-      loadSteuerung();
       renderTripDetail(tripId, 'load');
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -327,7 +334,7 @@ async function restoreTripById(id) {
   /* ------------------------------ Meldungen (Banner) ------------------------------ */
 
   async function loadNotices() {
-    if (!VBG.isOwner(VBG.state.user.role)) return;
+    if (!VBG.state.user || !VBG.isOwner(VBG.state.user.role)) return;
     const wrap = document.getElementById('admin-notices');
     try {
       const { notices } = await API.get('/api/notices');
