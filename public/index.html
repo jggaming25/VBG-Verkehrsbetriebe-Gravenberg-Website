@@ -427,27 +427,27 @@
     <div class="admin-section">
       <div class="section-head">
         <h2>🚌 Nahverkehr Steuerung</h2>
-        <p class="muted">Aktiven Kurs setzen, Kurse ausfallen lassen und Anschlüsse verwalten.</p>
+        <p class="muted">Betriebszeitraum setzen, einzelne Fahrten ausfallen lassen und Anschlüsse verwalten.</p>
       </div>
 
       <div class="steer-grid">
         <div class="card form-card">
-          <h3>⭐ Aktiver Kurs</h3>
-          <p class="muted">Wird in der Abfahrtstafel hervorgehoben.</p>
+          <h3>🕓 Fahrten-Zeitraum aktivieren</h3>
+          <p class="muted">Nur Fahrten, die <b>zwischen Uhrzeit 1 und Uhrzeit 2 starten</b>, sind aktiv. Alle anderen Fahrten sind standardmäßig deaktiviert.</p>
           <div class="row gap">
-            <select class="input" id="act-line"></select>
-            <select class="input" id="act-course"></select>
+            <label class="field grow">Uhrzeit 1<input type="time" id="win-from" class="input" step="60"/></label>
+            <label class="field grow">Uhrzeit 2<input type="time" id="win-to" class="input" step="60"/></label>
           </div>
           <div class="row gap mt">
-            <button class="btn btn-primary btn-full" id="act-set">Setzen</button>
-            <button class="btn btn-ghost btn-full" id="act-clear" disabled>Deaktivieren</button>
+            <button class="btn btn-primary btn-full" id="win-set">Aktivieren</button>
+            <button class="btn btn-ghost btn-full" id="win-clear">Zeitraum aufheben (alle aktiv)</button>
           </div>
-          <p class="muted mt" id="act-status">Kein aktiver Kurs.</p>
+          <p class="muted mt" id="win-status">Wird geladen …</p>
         </div>
 
         <div class="card">
-          <h3>🚫 Fahrt ausfallen lassen</h3>
-          <p class="muted">Alle Fahrten mit Status. Klick auf „Fahrt fällt aus" setzt die Fahrt aus, „Detail" zeigt die Halte zum Ausfallen.</p>
+          <h3>🚏 Große Fahrtliste (aktive Fahrten)</h3>
+          <p class="muted">Alle aktiven Fahrten. Klick auf „Fahrt fällt aus" setzt die Fahrt aus, „Detail" zeigt die Halte zum einzelnen Ausfallen.</p>
           <div class="row gap trip-filter-row">
             <input class="input" id="trip-filter" type="search" placeholder="Linie, Kurs, Haltestelle …"/>
             <select class="input" id="trip-line-filter">
@@ -455,7 +455,6 @@
             </select>
           </div>
           <div id="trip-list" class="trip-list mt"></div>
-          <div id="cancel-list-ov" class="chip-list mt"></div>
         </div>
 
         <div class="card">
@@ -467,6 +466,8 @@
           <h3>🔗 Bestätigte Verbindungen</h3>
           <div id="conn-list" class="admin-list"></div>
         </div>
+      </div>
+    </div>
       </div>
     </div>
 

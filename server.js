@@ -1158,7 +1158,7 @@ async function linesMetaMap() {
 
 async function nahCtx() {
   if (!NAH) await seedFahrplan();
-  const [meta, tripCancels, stopCancels, conns, active] = await Promise.all([
+  const [meta, tripCancels, stopCancels, conns, active, winFrom, winTo] = await Promise.all([
     linesMetaMap(),
     db.all('SELECT trip_id FROM trip_cancellations'),
     db.all('SELECT trip_id, stop_id FROM stop_cancellations'),
@@ -1167,7 +1167,9 @@ async function nahCtx() {
               ta.line AS a_line, ta.course AS a_course, tb.line AS b_line, tb.course AS b_course
        FROM connections c JOIN trips ta ON ta.id = c.trip_a_id JOIN trips tb ON tb.id = c.trip_b_id`
     ),
-    getSetting('active_kurs')
+    getSetting('active_kurs'),
+    getSetting('window_from'),
+    getSetting('window_to')
   ]);
   const cancelledTrips = new Set(tripCancels.map((r) => r.trip_id));
   const cancelledStops = new Set(stopCancels.map((r) => r.trip_id + ':' + r.stop_id));
@@ -1176,7 +1178,20 @@ async function nahCtx() {
   for (const [line, m] of Object.entries(meta)) {
     for (const k of m.kurse || []) busOf[line + '|' + k.course] = k.bus;
   }
-  return { meta, cancelledTrips, cancelledStops, conns, activeParts, busOf };
+  let windowMin = null;
+  if (winFrom && winTo) {
+    const p = (s) => { const [h, m] = String(s).split(':').map(Number); return (Number(h) || 0) * 60 + (Number(m) || 0); };
+    windowMin = { from: p(winFrom), to: p(winTo) };
+  }
+  return { meta, cancelledTrips, cancelledStops, conns, activeParts, busOf, windowMin };
+}
+
+function tripInWindow(trip, windowMin) {
+  if (!windowMin) return true;
+  const st = (trip.stops && trip.stops[0] && trip.stops[0].dep) != null ? trip.stops[0].dep : null;
+  if (st == null) return false;
+  if (windowMin.from <= windowMin.to) return st >= windowMin.from && st <= windowMin.to;
+  return st >= windowMin.from || st <= windowMin.to;
 }
 
 app.get('/api/nahverkehr/meta', async (req, res) => {
@@ -1201,7 +1216,7 @@ app.get('/api/nahverkehr/meta', async (req, res) => {
 });
 
 app.get('/api/nahverkehr/departures', async (req, res) => {
-  const { meta, cancelledTrips, cancelledStops, conns, activeParts, busOf } = await nahCtx();
+  const { meta, cancelledTrips, cancelledStops, conns, activeParts, busOf, windowMin } = await nahCtx();
   const stopParam = String(req.query.stop || '').trim();
   const kind = req.query.kind === 'ankunft' ? 'ankunft' : 'abfahrt';
   const limit = Math.min(60, Math.max(5, Number(req.query.limit) || 24));
@@ -1221,6 +1236,7 @@ app.get('/api/nahverkehr/departures', async (req, res) => {
     if (!at) continue;
     if (cancelledTrips.has(trip.id)) continue;
     if (cancelledStops.has(trip.id + ':' + stopId)) continue;
+    if (!tripInWindow(trip, windowMin)) continue;
     const isStart = at.seq === 0;
     const isEnd = at.seq === trip.stops.length - 1;
     if (kind === 'abfahrt' && isEnd) continue;
@@ -1264,7 +1280,7 @@ app.get('/api/nahverkehr/departures', async (req, res) => {
 });
 
 app.get('/api/nahverkehr/trips', async (req, res) => {
-  const { cancelledTrips, busOf } = await nahCtx();
+  const { cancelledTrips, busOf, windowMin } = await nahCtx();
   const line = String(req.query.line || '').trim();
   const course = req.query.course ? Number(req.query.course) : null;
   const direction = String(req.query.direction || '').trim();
@@ -1272,6 +1288,7 @@ app.get('/api/nahverkehr/trips', async (req, res) => {
   if (line) trips = trips.filter((t) => t.line === line);
   if (course) trips = trips.filter((t) => t.course === course);
   if (['hin', 'zurück'].includes(direction)) trips = trips.filter((t) => t.direction === direction);
+  if (req.query.all !== '1') trips = trips.filter((t) => tripInWindow(t, windowMin));
   const out = trips.map((t) => ({
     id: t.id,
     line: t.line,
@@ -1352,6 +1369,32 @@ app.put('/api/nahverkehr/active', guard(['inhaber']), async (req, res) => {
   await setSetting('active_kurs', `${line}|${Number(course)}`);
   res.json({ ok: true, line, course: Number(course) });
   discordLog('⭐ Aktiver Kurs gesetzt', `${req.user.username} hat Kurs ${course} der Linie ${line} aktiviert.`);
+});
+
+/* Zeitfenster für aktive Fahrten: nur Fahrten, deren Start in den Bereich fällt, sind aktiv.
+   Ohne gesetztes Fenster sind alle Fahrten aktiv. */
+
+app.get('/api/nahverkehr/window', async (req, res) => {
+  const [from, to] = await Promise.all([getSetting('window_from'), getSetting('window_to')]);
+  res.json({ from: from || null, to: to || null });
+});
+
+app.put('/api/nahverkehr/window', guard(['inhaber']), async (req, res) => {
+  const { from, to } = req.body || {};
+  const validTime = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s || ''));
+  if (!validTime(from) || !validTime(to)) {
+    return res.status(400).json({ error: 'Bitte beide Uhrzeiten als HH:MM angeben.' });
+  }
+  await setSetting('window_from', String(from));
+  await setSetting('window_to', String(to));
+  res.json({ ok: true, from: String(from), to: String(to) });
+  discordLog('🕓 Fahrten-Zeitraum aktiviert', `${req.user.username} hat den Betriebszeitraum ${from} – ${to} Uhr aktiviert (alle anderen Fahrten sind deaktiviert).`);
+});
+
+app.delete('/api/nahverkehr/window', guard(['inhaber']), async (req, res) => {
+  await Promise.all([setSetting('window_from', ''), setSetting('window_to', '')]);
+  res.json({ ok: true, from: null, to: null });
+  discordLog('🕓 Fahrten-Zeitraum deaktiviert', `${req.user.username} hat den Betriebszeitraum aufgehoben – alle Fahrten sind wieder aktiv.`);
 });
 
 app.post('/api/nahverkehr/cancel-kurs', guard(['inhaber']), async (req, res) => {
@@ -1444,7 +1487,7 @@ app.get('/api/nahverkehr/cancellations', guard(['inhaber']), async (req, res) =>
 /* Verbindungssuche */
 
 app.get('/api/nahverkehr/search', async (req, res) => {
-  const { cancelledTrips } = await nahCtx();
+  const { cancelledTrips, windowMin } = await nahCtx();
   const fromName = String(req.query.from || '').trim();
   const toName = String(req.query.to || '').trim();
   const timeParam = String(req.query.time || '').trim();
@@ -1459,11 +1502,13 @@ app.get('/api/nahverkehr/search', async (req, res) => {
   if (fromId.id === toId.id) return res.status(400).json({ error: 'Start und Ziel sind gleich.' });
 
   const valid = (tid) => !cancelledTrips.has(tid);
+  const inWin = (trip) => tripInWindow(trip, windowMin);
   const conns = (await db.all('SELECT trip_a_id, trip_b_id, stop_id FROM connections'))
     .reduce((acc, c) => { acc.set(c.trip_a_id + ':' + c.trip_b_id + ':' + c.stop_id, true); return acc; }, new Map());
 
   const direct = [];
   for (const trip of NAH.trips) {
+    if (!inWin(trip)) continue;
     const fi = trip.stops.findIndex((s) => s.stopId === fromId.id);
     const ti = trip.stops.findIndex((s) => s.stopId === toId.id);
     if (fi >= 0 && ti > fi) {
@@ -1476,12 +1521,12 @@ app.get('/api/nahverkehr/search', async (req, res) => {
   const transfers = [];
   outer: for (const t1 of NAH.trips) {
     const fi = t1.stops.findIndex((s) => s.stopId === fromId.id);
-    if (fi < 0 || !valid(t1.id)) continue;
+    if (fi < 0 || !valid(t1.id) || !inWin(t1)) continue;
     for (const via of t1.stops.slice(fi + 1)) {
       const rel = via.dep;
       if (rel < t0) continue;
       for (const t2 of NAH.trips) {
-        if (t2.id === t1.id) continue;
+        if (t2.id === t1.id || !inWin(t2)) continue;
         const vIdx = t2.stops.findIndex((s) => s.stopId === via.stopId);
         const ti = t2.stops.findIndex((s) => s.stopId === toId.id);
         if (vIdx < 0 || ti <= vIdx || !valid(t2.id)) continue;

@@ -1,9 +1,6 @@
 /* VBG – Admin-Bereich: Meldungs-Banner verwalten + Kontoübersicht/Rollenverwaltung */
 VBG.admin = (function () {
   let users = [];
-  let nvLines = [];
-  let nvCourses = [];
-  let nvActive = { line: null, course: null };
   let notifyTarget = { id: null, name: '' };
 
   /* ------------------------------ Nahverkehr Steuerung ------------------------------ */
@@ -12,76 +9,66 @@ VBG.admin = (function () {
     sel.innerHTML = items.map((it) => `<option value="${String(it.value)}">${it.label}</option>`).join('');
   }
 
-  function nvLineOptions(sel) {
-    fillSelect(sel, nvLines.map((l) => ({ value: l.line, label: 'Linie ' + l.line + ' – ' + l.name.split('·')[0] })));
-  }
-
-  function nvCourseOptions(sel) {
-    const line = sel.dataset.forline ? document.getElementById(sel.dataset.forline).value : null;
-    const kurse = nvLines.find((l) => l.line === line)?.kurse || [];
-    fillSelect(sel, kurse.map((k) => ({ value: String(k.course), label: 'Kurs ' + k.course + ' (' + k.bus + ')' })));
-  }
-
   async function loadSteuerung() {
     if (!VBG.isOwner(VBG.state.user.role)) return;
     try {
-      const meta = await API.get('/api/nahverkehr/meta');
-      nvLines = meta.lines || [];
-      const active = await API.get('/api/nahverkehr/active');
-      nvActive = { line: active.line, course: active.course };
-      const cancels = await API.get('/api/nahverkehr/cancellations');
       const reqs = await API.get('/api/nahverkehr/requests');
       const conns = await API.get('/api/nahverkehr/connections');
-      nvLineOptions(document.getElementById('act-line'));
-      if (nvActive.line) document.getElementById('act-line').value = nvActive.line;
-      if (nvActive.course) {
-        nvCourseOptions(document.getElementById('act-course'));
-        document.getElementById('act-course').value = String(nvActive.course);
-      } else {
-        nvCourseOptions(document.getElementById('act-course'));
-      }
-      renderActive();
-      renderCancelOverview(cancels.cancellations || null);
       renderRequests(reqs.requests || []);
       renderConns(conns.connections || []);
+      loadWindow();
       loadTrips();
     } catch (e) {
       toast('Nahverkehr-Steuerung: ' + e.message, 'err');
     }
   }
 
-  function renderActive() {
-    const status = document.getElementById('act-status');
-    document.getElementById('act-clear').disabled = !nvActive.line;
-    status.textContent = nvActive.line
-      ? `Aktiver Kurs: Linie ${nvActive.line} · Kurs ${nvActive.course} (alle Kurse ansonsten aktiv)`
-      : 'Standard: alle Kurse aktiv.';
+  /* ------------------------------ Fahrten-Zeitraum (Betriebszeiten) ------------------------------ */
+
+  async function loadWindow() {
+    const status = document.getElementById('win-status');
+    try {
+      const data = await API.get('/api/nahverkehr/window');
+      document.getElementById('win-from').value = data.from || '';
+      document.getElementById('win-to').value = data.to || '';
+      renderWindowStatus(data.from, data.to);
+    } catch (e) {
+      if (status) status.textContent = 'Zeitfenster konnte nicht geladen werden.';
+    }
   }
 
-  async function setActive() {
-    const line = document.getElementById('act-line').value;
-    const course = Number(document.getElementById('act-course').value);
-    if (!line || !course) return;
+  function renderWindowStatus(from, to) {
+    const status = document.getElementById('win-status');
+    if (!status) return;
+    status.textContent = from && to
+      ? `Aktiver Betriebszeitraum: ${from} – ${to} Uhr (nur Fahrten, die in diesem Zeitraum starten, sind aktiv).`
+      : 'Standard: alle Fahrten aktiv (kein Zeitraum gesetzt).';
+  }
+
+  async function setWindow() {
+    const from = document.getElementById('win-from').value;
+    const to = document.getElementById('win-to').value;
+    if (!from || !to) { toast('Bitte beide Uhrzeiten angeben.', 'err'); return; }
     try {
-      const data = await API.put('/api/nahverkehr/active', { line, course });
-      nvActive = { line: data.line, course: data.course };
-      toast(`Aktiver Kurs: Linie ${line} · Kurs ${course}`, 'ok');
-      renderActive();
-      VBG.nahverkehr.loadBoard();
+      const data = await API.put('/api/nahverkehr/window', { from, to });
+      toast(`Zeitraum ${data.from} – ${data.to} Uhr aktiviert.`, 'ok');
+      renderWindowStatus(data.from, data.to);
+      loadTrips();
+      if (VBG.nahverkehr && VBG.nahverkehr.loadBoard) VBG.nahverkehr.loadBoard();
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  async function clearActive() {
+  async function clearWindow() {
     try {
-      await API.put('/api/nahverkehr/active', {});
-      nvActive = { line: null, course: null };
-      toast('Aktiver Kurs deaktiviert.', 'ok');
-      renderActive();
-      VBG.nahverkehr.loadBoard();
+      const data = await API.del('/api/nahverkehr/window');
+      toast('Zeitraum aufgehoben – alle Fahrten aktiv.', 'ok');
+      renderWindowStatus(data.from, data.to);
+      loadTrips();
+      if (VBG.nahverkehr && VBG.nahverkehr.loadBoard) VBG.nahverkehr.loadBoard();
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  /* ------------------------------ Fahrtliste + Ausfälle ------------------------------ */
+  /* ------------------------------ Fahrtliste (aktive Fahrten) ------------------------------ */
 
   let allTrips = [];
   let openTripId = null;
@@ -179,18 +166,10 @@ VBG.admin = (function () {
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  async function restoreTripById(id) {
+async function restoreTripById(id) {
     try {
       await API.del('/api/nahverkehr/trips/' + id + '/cancel');
-      toast('Fahrt wieder aktiv.', 'ok');
-      loadSteuerung();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  async function restoreCourseByKey(line, course) {
-    try {
-      await API.del(`/api/nahverkehr/cancel-kurs?line=${encodeURIComponent(line)}&course=${course}`);
-      toast('Kurs wieder aktiv.', 'ok');
+      toast('Fahrt fährt wieder.', 'ok');
       loadSteuerung();
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -217,22 +196,6 @@ VBG.admin = (function () {
       loadSteuerung();
       renderTripDetail(tripId, 'load');
     } catch (e) { toast(e.message, 'err'); }
-  }
-
-  function renderCancelOverview(list) {
-    const wrap = document.getElementById('cancel-list-ov');
-    list = list || { courses: [], trips: [], stops: [] };
-    const chips = [];
-    if (list.courses && list.courses.length) {
-      chips.push(list.courses.map((c) => `<span class="chip chip-cancel" data-uncancelcourse="${esc(c.line + '|' + c.course)}" title="Wieder aktivieren">🚫 L${esc(c.line)} Kurs ${esc(c.course)} · ✕</span>`).join(''));
-    }
-    if (list.trips && list.trips.length) {
-      chips.push(list.trips.map((t) => `<span class="chip chip-cancel" data-uncanceltrip="${t.id}" title="Wieder aktivieren">🚫 Fahrt L${esc(t.line)} K${esc(t.course)} ${esc(t.direction)} ${esc(t.start)} · ✕</span>`).join(''));
-    }
-    if (list.stops && list.stops.length) {
-      chips.push(list.stops.map((s) => `<span class="chip chip-cancel" data-uncancelstop="${esc(s.tripId + '|' + s.stopId)}" title="Wieder aktivieren">🚫 ${esc(s.stop)} · K${esc(s.course)} ${esc(s.start)} · ✕</span>`).join(''));
-    }
-    wrap.innerHTML = chips.length ? chips.join('') : '';
   }
 
   function renderRequests(list) {
@@ -468,9 +431,8 @@ VBG.admin = (function () {
     document.getElementById('notify-send').addEventListener('click', sendNotify);
     document.getElementById('user-search').addEventListener('input', render);
     document.getElementById('notice-form').addEventListener('submit', submitNotice);
-    document.getElementById('act-line').addEventListener('change', () => nvCourseOptions(document.getElementById('act-course')));
-    document.getElementById('act-set').addEventListener('click', setActive);
-    document.getElementById('act-clear').addEventListener('click', clearActive);
+    document.getElementById('win-set').addEventListener('click', setWindow);
+    document.getElementById('win-clear').addEventListener('click', clearWindow);
     document.getElementById('trip-filter').addEventListener('input', renderTrips);
     document.getElementById('trip-line-filter').addEventListener('change', renderTrips);
     document.getElementById('trip-list').addEventListener('click', (e) => {
@@ -483,14 +445,6 @@ VBG.admin = (function () {
         renderTrips();
         return;
       }
-    });
-    document.getElementById('cancel-list-ov').addEventListener('click', (e) => {
-      const c = e.target.closest('[data-uncancelcourse]');
-      if (c) { const [line, course] = c.dataset.uncancelcourse.split('|'); restoreCourseByKey(line, course); return; }
-      const t = e.target.closest('[data-uncanceltrip]');
-      if (t) { restoreTripById(Number(t.dataset.uncanceltrip)); return; }
-      const s = e.target.closest('[data-uncancelstop]');
-      if (s) { const p = s.dataset.uncancelstop.split('|'); restoreStop(Number(p[0]), Number(p[1])); }
     });
     document.getElementById('req-list').addEventListener('click', (e) => {
       const a = e.target.closest('[data-acc]');
