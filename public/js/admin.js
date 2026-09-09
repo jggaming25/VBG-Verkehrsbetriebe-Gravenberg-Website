@@ -311,8 +311,8 @@ VBG.admin = (function () {
       const roleCell = canEdit
         ? `<select class="role-select" data-rolefor="${u.id}">${['besucher', 'bearbeiter', 'inhaber'].map(roleOption).join('')}</select>`
         : `<span class="role-badge role-${esc(u.role)}">${esc(VBG.labels.roles[u.role])}</span>`;
-      // Inhaber können einander nicht sperren/löschen – auch sich selbst nicht über die UI.
-      const canAct = canEdit && u.role !== 'inhaber' && u.id !== me;
+      // Feste Inhaber-Konten (OWNER_EMAILS) und das eigene Konto sind über die UI geschützt.
+      const canAct = canEdit && u.id !== me && u.owner_email !== 1;
       const status = u.blocked ? '<span class="badge badge-p-hoch">⛔ Gesperrt</span>' : (u.verified ? '<span class="verified">✓ verifiziert</span>' : '<span class="muted">− nicht verifiziert</span>');
       return `<tr>
         <td><div class="user-cell">${avatarHtml({ username: u.username, avatar: u.avatar })}<b>${esc(u.username)}</b></div></td>

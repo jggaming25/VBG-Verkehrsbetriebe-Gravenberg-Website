@@ -448,7 +448,8 @@ app.get('/api/users', guard(['inhaber', 'bearbeiter']), async (req, res) => {
     `SELECT id, email, username, role, verified, blocked, created_at, avatar FROM users
      ORDER BY CASE role WHEN 'inhaber' THEN 0 WHEN 'bearbeiter' THEN 1 ELSE 2 END, username COLLATE NOCASE`
   );
-  res.json({ users });
+  const ownerSet = new Set(OWNER_EMAILS);
+  res.json({ users: users.map((u) => ({ ...u, owner_email: ownerSet.has(String(u.email).toLowerCase()) ? 1 : 0 })) });
 });
 
 app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
@@ -457,9 +458,6 @@ app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Ungültige Rolle.' });
   const target = await db.get('SELECT id, email, role FROM users WHERE id = ?', [id]);
   if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden.' });
-  if (target.role === 'inhaber' && id !== req.user.id) {
-    return res.status(400).json({ error: 'Inhaber können einander keine Rollen verändern.' });
-  }
   const targetIsOwnerEmail = OWNER_EMAILS.includes(String(target.email).toLowerCase());
   if (targetIsOwnerEmail && role !== 'inhaber') {
     return res.status(400).json({ error: 'Die festen Inhaber-E-Mails können nicht herabgestuft werden.' });
@@ -473,16 +471,16 @@ app.put('/api/users/:id/role', guard(['inhaber']), async (req, res) => {
   discordLog('🛡️ Rollenänderung', `**${target.email}** wurde von **${target.role}** auf **${role}** geändert (${req.user.username}).`);
 });
 
-// Inhaber können einander nicht sperren; feste Inhaber-Konten sind komplett geschützt.
+// Festen Inhaber-E-Mails (OWNER_EMAILS) sind komplett geschützt; das eigene Konto ebenfalls.
 async function guardAccountAction(req, res, target) {
   if (!target) { res.status(404).json({ error: 'Nutzer nicht gefunden.' }); return true; }
   const isOwnerAccount = OWNER_EMAILS.includes(String(target.email).toLowerCase());
-  if (target.role === 'inhaber' && target.id !== req.user.id) {
-    res.status(400).json({ error: 'Inhaber können einander keine Konten sperren oder löschen.' });
-    return true;
-  }
   if (isOwnerAccount) {
     res.status(400).json({ error: 'Feste Inhaber-Konten können nicht gesperrt oder gelöscht werden.' });
+    return true;
+  }
+  if (target.id === req.user.id) {
+    res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht sperren oder löschen.' });
     return true;
   }
   return false;
