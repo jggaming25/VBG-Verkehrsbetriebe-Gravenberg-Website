@@ -51,19 +51,15 @@ const DROP_TABLES = [
   'fahrtausfaelle', 'notifications', 'announcements', 'fahrplan_cache', 'channels'
 ];
 
-async function init() {
-  let legacy = false;
-  try {
-    const cols = await tableInfo('users');
-    if (cols.length && cols.every((c) => c.name !== 'display_name')) legacy = true;
-  } catch (e) { /* Tabelle existiert noch nicht */ }
-
-  if (legacy) {
-    for (const t of DROP_TABLES) {
-      try { await client.execute(`DROP TABLE IF EXISTS ${t}`); } catch (e) { /* ignorieren */ }
-    }
+async function dropAll() {
+  try { await client.execute(`PRAGMA foreign_keys = OFF`); } catch (e) { /* ignorieren */ }
+  for (const t of DROP_TABLES) {
+    try { await client.execute(`DROP TABLE IF EXISTS ${t}`); } catch (e) { console.log('[migration] Drop ignoriert: ' + e.message); }
   }
+  try { await client.execute(`PRAGMA foreign_keys = ON`); } catch (e) { /* ignorieren */ }
+}
 
+async function initOnce() {
   await client.execute(`PRAGMA foreign_keys = ON`);
 
   await client.execute(`
@@ -281,6 +277,36 @@ async function init() {
     );
     console.log('[seed] Admin erstellt: Benutzername=' + username + ' Einmal-Passwort=' + oneTime + ' (bitte beim ersten Login ändern)');
   }
+}
+
+let initResolved = false;
+
+async function init() {
+  if (initResolved) return;
+  let stale = false;
+  try {
+    const cols = await tableInfo('users');
+    if (cols.length && cols.every((c) => c.name !== 'display_name')) stale = true;
+  } catch (e) { /* Tabelle existiert noch nicht */ }
+
+  if (stale) {
+    console.log('[migration] Altes users-Schema erkannt – Datenbank wird komplett neu aufgebaut');
+    await dropAll();
+  }
+
+  try {
+    await initOnce();
+  } catch (e) {
+    const msg = e && e.message ? e.message : '';
+    if (/no column named|no such table|duplicate column name/i.test(msg)) {
+      console.log('[migration] Schema fehlerhaft (' + msg + ') – Datenbank wird komplett neu aufgebaut');
+      await dropAll();
+      await initOnce();
+    } else {
+      throw e;
+    }
+  }
+  initResolved = true;
 }
 
 module.exports = { get, all, run, transaction, hasColumn: tableInfo, init };
