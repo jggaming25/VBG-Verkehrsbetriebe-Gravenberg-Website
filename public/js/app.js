@@ -1,472 +1,257 @@
-/* VBG – App-Steuerung: Theme, Tabs, Auth, Konto, E-Mails */
+/* VBG Verwalter – App-Shell: Session, Routing, Theme, Login */
 (function () {
-  const state = (VBG.state = { user: null, authMode: 'login' });
+  const PAGES = {
+    start: StartPage,
+    anmeldung: AnmeldungPage,
+    dienstplan: DienstplanPage,
+    meinedienste: MeineDienstePage,
+    activity: ActivityPage,
+    inactivity: InactivityPage,
+    strafe: StrafePage,
+    profil: ProfilPage,
+    admin: AdminPage
+  };
 
-  const $ = (id) => document.getElementById(id);
-  const TABS = ['start', 'shifts', 'netzplan', 'linien', 'nahverkehr', 'tickets', 'admin', 'account'];
+  const App = {
+    user: null,
+    settings: { meldung_active: false, meldung_text: '' },
+    checkAuth: null,
 
-  /* ------------------------------ Toasts / Modals ------------------------------ */
+    init() {
+      this.bindShell();
+      this.loadSession();
+    },
 
-  function toast(msg, type) {
-    const wrap = $('toast-wrap');
-    const el = document.createElement('div');
-    el.className = 'toast' + (type ? ' ' + type : '');
-    el.textContent = msg;
-    wrap.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 3400);
-    setTimeout(() => el.remove(), 3800);
-  }
+    bindShell() {
+      document.getElementById('login-form').addEventListener('submit', (e) => { e.preventDefault(); this.doLogin(); });
+      document.getElementById('pw-form').addEventListener('submit', (e) => { e.preventDefault(); this.setFirstPassword(); });
+      document.getElementById('pw-logout').addEventListener('click', () => this.doLogout());
 
-  function openModal(id) { $(id).classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
-  function closeModal(id) { $(id).classList.add('hidden'); document.body.style.overflow = ''; }
-  function closeAllModals() { document.querySelectorAll('.modal').forEach((m) => m.classList.add('hidden')); document.body.style.overflow = ''; }
-
-  window.toast = toast;
-  window.openModal = openModal;
-  window.closeModal = closeModal;
-
-  /* ------------------------------ Theme ------------------------------ */
-
-  function applyTheme(t) {
-    document.documentElement.setAttribute('data-theme', t);
-    localStorage.setItem('vbg-theme', t);
-  }
-  function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
-
-  /* ------------------------------ Tabs ------------------------------ */
-
-  function showTab(name) {
-    if (name === 'tickets' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
-    if (name === 'admin' && !state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
-    if (name === 'admin' && !VBG.isStaff(state.user.role)) { toast('Keine Berechtigung für den Admin-Bereich.', 'err'); return; }
-    if (name === 'account' && !state.user) { openModal('modal-auth'); return; }
-    TABS.forEach((t) => {
-      $('tab-' + t).classList.toggle('active', t === name);
-    });
-    document.querySelectorAll('.nav-link[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    if (name === 'shifts') VBG.shifts.load().catch((e) => toast(e.message, 'err'));
-    if (name === 'tickets') VBG.tickets.load().catch((e) => toast(e.message, 'err'));
-    if (name === 'nahverkehr') VBG.nahverkehr.load().catch((e) => toast(e.message, 'err'));
-    if (name === 'account') renderAccount();
-    if (name === 'admin') VBG.admin.load().catch((e) => toast(e.message, 'err'));
-  }
-  window.showTab = showTab;
-
-  function openTickets(sub) {
-    if (!state.user) { toast('Bitte erst anmelden oder registrieren.', 'err'); openModal('modal-auth'); return; }
-    if (sub === 'dashboard' && !VBG.isStaff(state.user.role)) { toast('Keine Berechtigung für das Ticket-Dashboard.', 'err'); return; }
-    state.ticketsTarget = sub;
-    showTab('tickets');
-  }
-  VBG.openTickets = openTickets;
-
-  /* ------------------------------ Auth UI ------------------------------ */
-
-  function setAuthMode(mode) {
-    state.authMode = mode;
-    $('auth-title').textContent = mode === 'login' ? 'Willkommen zurück' : 'Konto erstellen';
-    $('auth-subline').textContent = mode === 'login' ? 'Melde dich an oder nutze Discord.' : 'Registriere dich in Sekunden.';
-    $('auth-username-field').classList.toggle('hidden', mode === 'login');
-    $('auth-username').required = mode === 'register';
-    $('auth-password').minLength = mode === 'register' ? 6 : 0;
-    $('auth-password').placeholder = mode === 'register' ? 'Mindestens 6 Zeichen' : '••••••••';
-    $('auth-submit').textContent = mode === 'login' ? 'Anmelden' : 'Registrieren';
-    $('auth-switch-text').textContent = mode === 'login' ? 'Noch kein Konto?' : 'Schon registriert?';
-    $('auth-toggle').textContent = mode === 'login' ? 'Registrieren' : 'Anmelden';
-  }
-
-  async function submitAuth(e) {
-    e.preventDefault();
-    const email = $('auth-email').value.trim();
-    const password = $('auth-password').value;
-    const username = $('auth-username').value.trim();
-    const btn = $('auth-submit');
-    btn.disabled = true;
-    try {
-      if (state.authMode === 'login') {
-        const data = await API.post('/api/login', { email, password });
-        state.user = data.user;
-        toast('Willkommen zurück, ' + data.user.username + '!', 'ok');
-        closeModal('modal-auth');
-        afterLogin();
-      } else {
-        const data = await API.post('/api/register', { email, password, username });
-        state.user = data.user;
-        closeModal('modal-auth');
-        afterLogin();
-        if (data.verifyCode) {
-          const sent = await sendVerifyEmail(data.user.email, data.user.username, data.verifyCode);
-          toast(
-            sent
-              ? 'Konto erstellt! Verifizierungs-Code wurde per E-Mail gesendet.'
-              : 'Konto erstellt! Dein Verifizierungs-Code: ' + data.verifyCode,
-            'ok'
-          );
-        } else {
-          toast('Konto erstellt – als Inhaber bestätigt!', 'ok');
+      document.getElementById('theme-toggle').addEventListener('click', () => {
+        const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = cur;
+        localStorage.setItem('vbg_theme', cur);
+        if (App.user && App.user.theme === 'auto') {
+          API.post('/api/profile', { display_name: App.user.display_name, theme: 'auto' }).catch(() => {});
         }
-        renderAccount();
+      });
+
+      document.getElementById('user-chip').addEventListener('click', () => { location.hash = '#/profil'; });
+      document.getElementById('btn-logout-side').addEventListener('click', () => this.doLogout());
+      document.getElementById('sidebar-open').addEventListener('click', () => this.openSidebar(true));
+      document.getElementById('sidebar-close').addEventListener('click', () => this.openSidebar(false));
+      document.getElementById('sidebar-overlay').addEventListener('click', () => this.openSidebar(false));
+
+      document.getElementById('image-view-close').addEventListener('click', () => this.closeImage());
+      document.getElementById('image-view').addEventListener('click', (e) => { if (e.target === e.currentTarget) this.closeImage(); });
+
+      window.addEventListener('hashchange', () => this.route());
+    },
+
+    openSidebar(open) {
+      document.getElementById('sidebar').classList.toggle('open', open);
+      document.getElementById('sidebar-overlay').classList.toggle('show', open);
+    },
+
+    async loadSession() {
+      try {
+        const data = await API.get('/api/session');
+        API.csrf = data.csrf;
+        this.applySettings(data.settings);
+        if (data.user) {
+          this.user = data.user;
+          this.applyTheme();
+          if (data.user.must_change_password) {
+            this.showPwScreen();
+          } else {
+            this.showApp();
+          }
+        } else {
+          this.showLogin();
+        }
+      } catch (e) {
+        this.showLogin();
       }
-    } catch (err) {
-      toast(err.message, 'err');
-    } finally {
-      btn.disabled = false;
-    }
-  }
+    },
 
-  /* ------------------------------ Account ------------------------------ */
-
-  function renderAccount() {
-    if (!state.user) return;
-    const u = state.user;
-    $('profile-name').textContent = u.username;
-    $('profile-email').textContent = u.email;
-    $('profile-created').textContent = fmtDateISO(u.created_at ? u.created_at.slice(0, 10) : null);
-    $('profile-role').className = 'role-badge role-' + u.role;
-    $('profile-role').textContent = VBG.labels.roles[u.role];
-    $('profile-provider').textContent = u.avatar ? 'Discord' : 'E-Mail';
-
-    const av = $('profile-avatar');
-    if (u.avatar) { av.src = u.avatar; av.style.display = ''; }
-    else { av.src = ''; av.style.display = 'none'; }
-
-    $('profile-verified').textContent = u.verified ? '✓ Verifiziert' : '✗ Nicht verifiziert';
-    $('profile-verified').className = 'verified' + (u.verified ? '' : ' muted');
-    $('verify-banner').classList.toggle('hidden', !!u.verified);
-    $('password-banner').classList.toggle('hidden', !!u.hasPassword);
-    renderDiscordRoles(u.discord_roles || []);
-  }
-
-  function renderDiscordRoles(roles) {
-    const wrap = $('profile-discord-roles');
-    if (!roles || !roles.length) {
-      wrap.innerHTML = '<p class="muted">Keine Discord-Rollen verknüpft.</p>';
-      return;
-    }
-    wrap.innerHTML = '<h3 class="roles-title">🎖️ Discord-Rollen</h3>' + roles.map((r) => {
-      const label = VBG.discordRoles[r] || r;
-      return `<span class="discord-role-chip">${label}</span>`;
-    }).join('');
-  }
-
-  async function verifyCode() {
-    const code = $('verify-code').value.trim();
-    if (!code) { toast('Bitte Code eingeben.', 'err'); return; }
-    try {
-      await API.post('/api/verify', { code });
-      state.user.verified = 1;
-      toast('E-Mail verifiziert!', 'ok');
-      renderAccount();
-      updateAuthUI();
-    } catch (err) { toast(err.message, 'err'); }
-  }
-
-  async function resendCode() {
-    try {
-      const data = await API.post('/api/verify/resend');
-      const sent = await sendVerifyEmail(state.user.email, state.user.username, data.verifyCode);
-      toast(sent ? 'Code erneut gesendet.' : 'Dein neuer Code: ' + data.verifyCode, 'ok');
-    } catch (err) { toast(err.message, 'err'); }
-  }
-
-  async function setPassword() {
-    const password = $('auth-setpass').value;
-    if (!password || password.length < 6) { toast('Passwort muss mindestens 6 Zeichen haben.', 'err'); return; }
-    try {
-      await API.post('/api/password', { password });
-      state.user.hasPassword = 1;
-      $('password-banner').classList.add('hidden');
-      $('auth-setpass').value = '';
-      toast('Passwort festgelegt!', 'ok');
-    } catch (err) { toast(err.message, 'err'); }
-  }
-
-  async function logout() {
-    try { await API.post('/api/logout'); } catch (e) { /* ignoriere */ }
-    state.user = null;
-    updateAuthUI();
-    if (VBG.notifications) VBG.notifications.close();
-    toast('Abgemeldet.', 'ok');
-    showTab('start');
-  }
-
-  /* ------------------------------ UI-State nach Login ------------------------------ */
-
-  function afterLogin() {
-    updateAuthUI();
-    showTab('account');
-  }
-
-  function updateAuthUI() {
-    const logged = !!state.user;
-    const staff = logged && VBG.isStaff(state.user.role);
-    $('auth-buttons').classList.toggle('hidden', logged);
-    $('notif-wrap').classList.toggle('hidden', !logged);
-    $('user-chip').classList.toggle('hidden', !logged);
-    $('nav-tickets-wrap').classList.toggle('hidden', !logged);
-    $('dd-tickets-dashboard').classList.toggle('hidden', !staff);
-    $('nav-admin').classList.toggle('hidden', !staff);
-    $('nav-account').classList.toggle('hidden', !logged);
-    if (logged) {
-      $('user-name').textContent = state.user.username;
-      const chipAv = $('user-avatar');
-      if (state.user.avatar) { chipAv.src = state.user.avatar; chipAv.style.display = ''; }
-      else { chipAv.src = ''; chipAv.style.display = 'none'; }
-      $('btn-hero-ticket').textContent = 'Support-Ticket';
-    } else {
-      $('btn-hero-ticket').textContent = 'Anmelden & Support-Ticket';
-    }
-    if (VBG.notifications) VBG.notifications.refresh();
-  }
-
-  /* ------------------------------ Meldungen (Banner) ------------------------------ */
-
-  async function loadNotices() {
-    const wrap = $('notices-bar');
-    try {
-      const { notices } = await API.get('/api/notices');
-      if (!notices.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
-      wrap.innerHTML = notices.map((n) => `
-        <div class="notice-item">
-          <span class="notice-icon">⚠️</span>
-          <span class="notice-text">${esc(n.text)}</span>
-        </div>`).join('');
-      wrap.classList.remove('hidden');
-    } catch (e) {
-      wrap.classList.add('hidden');
-    }
-  }
-  VBG.loadNotices = loadNotices;
-
-  /* ------------------------------ E-Mail (EmailJS) ------------------------------ */
-
-  function emailJSReady() {
-    return VBG.emailjs.publicKey && VBG.emailjs.serviceId && (VBG.emailjs.verifyTemplateId || VBG.emailjs.ticketTemplateId);
-  }
-
-  async function sendVerifyEmail(to, username, code) {
-    if (!emailJSReady()) return false;
-    const { publicKey, serviceId, verifyTemplateId } = VBG.emailjs;
-    try {
-      await emailjs.send(serviceId, verifyTemplateId, { to_email: to, username, verification_code: code }, { publicKey });
-      return true;
-    } catch (e) { console.error('EmailJS verify', e); return false; }
-  }
-
-  async function notifyNewTicket(subject, id, priority) {
-    if (!VBG.emailjs.publicKey || !VBG.emailjs.serviceId || !VBG.emailjs.ticketTemplateId) return;
-    try {
-      const { emails } = await API.get('/api/staff-emails');
-      for (const to of emails) {
-        emailjs.send(VBG.emailjs.serviceId, VBG.emailjs.ticketTemplateId, { to_email: to, ticket_subject: subject, ticket_id: id, priority, from_username: state.user.username }, { publicKey: VBG.emailjs.publicKey }).catch((e) => console.error('EmailJS notify', e));
+    applySettings(s) {
+      if (!s) return;
+      this.settings = { ...this.settings, ...s };
+      const bar = document.getElementById('notices-bar');
+      if (s.meldung_active && s.meldung_text) {
+        bar.textContent = s.meldung_text;
+        bar.classList.remove('hidden');
+      } else {
+        bar.classList.add('hidden');
       }
-    } catch (e) { /* Benachrichtigung ist optional */ }
-  }
-  VBG.notifyNewTicket = notifyNewTicket;
+    },
 
-  /* ------------------------------ Landing-Galerie ------------------------------ */
+    applyTheme() {
+      const stored = localStorage.getItem('vbg_theme');
+      const prefs = window.matchMedia ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : 'light';
+      const theme = stored || (this.user.theme === 'auto' ? prefs : this.user.theme) || 'light';
+      document.documentElement.dataset.theme = theme;
+    },
 
-  async function loadGallery() {
-    const wrap = $('gallery-grid');
-    try {
-      const { images } = await API.get('/api/images');
-      const rest = images.filter((f) => f !== 'Bild1.png');
-      wrap.innerHTML = rest.slice(0, 12).map((f) =>
-        `<button class="gallery-item" data-viewimage="/IMGs/${encodeURIComponent(f)}"><img src="/IMGs/${encodeURIComponent(f)}" alt="Impression" loading="lazy"/></button>`
-      ).join('');
-    } catch (e) {
-      wrap.innerHTML = '';
+    showLogin() {
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('pw-screen').classList.add('hidden');
+      document.getElementById('app').classList.add('hidden');
+    },
+
+    showPwScreen() {
+      document.getElementById('pw-screen').classList.remove('hidden');
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').classList.add('hidden');
+    },
+
+    showApp() {
+      document.getElementById('app').classList.remove('hidden');
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('pw-screen').classList.add('hidden');
+      this.buildNav();
+      this.updateChips();
+      this.route();
+    },
+
+    async doLogin() {
+      const errorEl = document.getElementById('login-error');
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      errorEl.classList.add('hidden');
+      const btn = document.querySelector('#login-form .btn');
+      btn.disabled = true;
+      try {
+        const data = await API.post('/api/auth/login', { username, password });
+        API.csrf = data.csrf;
+        this.applySettings(data.settings);
+        this.user = data.user;
+        this.applyTheme();
+        document.getElementById('login-password').value = '';
+        if (data.user.must_change_password) {
+          this.showPwScreen();
+        } else {
+          this.showApp();
+        }
+      } catch (e) {
+        errorEl.textContent = e.message;
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+      }
+    },
+
+    async setFirstPassword() {
+      const errorEl = document.getElementById('pw-error');
+      const nw = document.getElementById('pw-new').value;
+      const rp = document.getElementById('pw-new-repeat').value;
+      errorEl.classList.add('hidden');
+      if (nw !== rp) {
+        errorEl.textContent = 'Die Passwörter stimmen nicht überein.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      const btn = document.querySelector('#pw-form .btn');
+      btn.disabled = true;
+      try {
+        await API.post('/api/password/first', { new_password: nw, new_password_repeat: rp });
+        this.user.must_change_password = false;
+        this.showApp();
+      } catch (e) {
+        errorEl.textContent = e.message;
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+      }
+    },
+
+    async doLogout() {
+      try { await API.post('/api/auth/logout'); } catch (e) { /* egal */ }
+      document.cookie = 'vbg_sid=; Path=/; Max-Age=0';
+      this.user = null;
+      this.showLogin();
+    },
+
+    buildNav() {
+      const nav = document.getElementById('sidebar-nav');
+      const items = VBG.nav.filter((n) => !n.adminOnly || (this.user && this.user.role === 'admin'));
+      nav.innerHTML = items.map((n) => `
+        <button class="sidebar-link" data-route="${n.route}">
+          ${n.icon}<span>${esc(n.label)}</span>
+        </button>`).join('');
+      nav.querySelectorAll('.sidebar-link').forEach((b) => {
+        b.addEventListener('click', () => {
+          location.hash = '#/' + b.dataset.route;
+          this.openSidebar(false);
+        });
+      });
+    },
+
+    updateChips() {
+      const u = this.user;
+      const name = u.display_name || u.username;
+      document.getElementById('user-name').textContent = name;
+      document.getElementById('user-role').textContent = roleLabel(u.role);
+      document.getElementById('user-avatar').innerHTML = u.avatar
+        ? `<img src="${esc(u.avatar)}" alt=""/>`
+        : esc(name.trim().charAt(0).toUpperCase() || '?');
+      document.getElementById('sidebar-user').innerHTML = `
+        ${avatarHtml(u)}
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name">${esc(name)}</span>
+          <span class="sidebar-user-role">${esc(roleLabel(u.role))}</span>
+        </div>`;
+    },
+
+    route() {
+      if (!this.user) return;
+      const hash = location.hash.replace(/^#\/?/, '');
+      const routeName = hash.split('?')[0] || 'start';
+      const Page = PAGES[routeName];
+      const container = document.getElementById('page');
+      document.getElementById('topbar-title').textContent = Page ? Page.title : 'Start';
+      const target = Page || StartPage;
+      document.querySelectorAll('.sidebar-link').forEach((b) => {
+        b.classList.toggle('active', b.dataset.route === routeName);
+      });
+      container.innerHTML = '<div class="empty">Lädt …</div>';
+      Promise.resolve(target.render(container, this))
+        .catch((e) => {
+          container.innerHTML = '<div class="empty">Fehler beim Laden: ' + esc(e.message || 'Unbekannt') + '</div>';
+        });
+    },
+
+    reload() {
+      this.route();
+    },
+
+    toast(msg, type) {
+      const wrap = document.getElementById('toast-wrap');
+      const el = document.createElement('div');
+      el.className = 'toast' + (type === 'error' ? ' error' : '');
+      el.textContent = msg;
+      wrap.appendChild(el);
+      setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 260);
+      }, 4200);
+    },
+
+    openImage(src) {
+      document.getElementById('image-view-img').src = src;
+      document.getElementById('image-view').classList.remove('hidden');
+    },
+    closeImage() {
+      document.getElementById('image-view').classList.add('hidden');
+      document.getElementById('image-view-img').src = '';
     }
-  }
+  };
 
-  /* ------------------------------ Bild-Modal (Zoom) ------------------------------ */
+  window.App = App;
 
-  const zoom = { s: 1, tx: 0, ty: 0 };
-  let zoomDrag = null;
+  App.checkAuth = function () {
+    return !!App.user;
+  };
 
-  function zoomApply(animate) {
-    const img = $('image-view');
-    img.style.transition = animate === false ? 'none' : 'transform 0.12s ease';
-    img.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.s})`;
-    $('zoom-level').textContent = Math.round(zoom.s * 100) + '%';
-    $('zoom-in').disabled = zoom.s >= 8;
-    $('zoom-out').disabled = zoom.s <= 1;
-  }
-
-  function zoomReset() {
-    zoom.s = 1; zoom.tx = 0; zoom.ty = 0;
-    zoomApply();
-  }
-
-  function zoomClamp() {
-    const img = $('image-view');
-    const vp = $('image-viewport');
-    const maxX = Math.max(0, (img.clientWidth * zoom.s - vp.clientWidth) / 2);
-    const maxY = Math.max(0, (img.clientHeight * zoom.s - vp.clientHeight) / 2);
-    zoom.tx = Math.min(maxX, Math.max(-maxX, zoom.tx));
-    zoom.ty = Math.min(maxY, Math.max(-maxY, zoom.ty));
-  }
-
-  function zoomBy(factor, cx, cy, animate) {
-    if (!cx && !cy) {
-      zoom.s = Math.min(8, Math.max(1, zoom.s * factor));
-      zoomClamp();
-      zoomApply(animate);
-      return;
-    }
-    const vp = $('image-viewport');
-    const rect = vp.getBoundingClientRect();
-    const mx = cx - rect.left - rect.width / 2;
-    const my = cy - rect.top - rect.height / 2;
-    const next = Math.min(8, Math.max(1, zoom.s * factor));
-    if (next === zoom.s) return;
-    zoom.tx += mx * (1 - next / zoom.s);
-    zoom.ty += my * (1 - next / zoom.s);
-    zoom.s = next;
-    zoomClamp();
-    zoomApply(animate);
-  }
-
-  function bindImageView() {
-    const vp = $('image-viewport');
-    vp.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      zoomBy(e.deltaY < 0 ? 1.18 : 1 / 1.18, e.clientX, e.clientY, false);
-    }, { passive: false });
-
-    vp.addEventListener('pointerdown', (e) => {
-      zoomDrag = { startX: e.clientX, startY: e.clientY, tx: zoom.tx, ty: zoom.ty };
-      vp.classList.add('dragging');
-      vp.setPointerCapture(e.pointerId);
-    });
-    vp.addEventListener('pointermove', (e) => {
-      if (!zoomDrag) return;
-      zoom.tx = zoomDrag.tx + (e.clientX - zoomDrag.startX);
-      zoom.ty = zoomDrag.ty + (e.clientY - zoomDrag.startY);
-      zoomClamp();
-      zoomApply(false);
-    });
-    const endDrag = () => { zoomDrag = null; vp.classList.remove('dragging'); };
-    vp.addEventListener('pointerup', endDrag);
-    vp.addEventListener('pointercancel', endDrag);
-
-    vp.addEventListener('dblclick', (e) => {
-      if (zoom.s > 1) zoomReset();
-      else zoomBy(2.5, e.clientX, e.clientY);
-    });
-
-    $('zoom-in').addEventListener('click', () => zoomBy(1.25));
-    $('zoom-out').addEventListener('click', () => zoomBy(1 / 1.25));
-    $('zoom-reset').addEventListener('click', zoomReset);
-  }
-
-  function openImageView(src) {
-    $('image-view').src = src;
-    zoomReset();
-    openModal('modal-image');
-  }
-  window.openImageView = openImageView;
-
-  /* ------------------------------ Events ------------------------------ */
-
-  function bind() {
-    // Navigation + Tabs
-    document.querySelectorAll('[data-tab]').forEach((el) => {
-      el.addEventListener('click', () => { if (el.id !== 'nav-tickets') showTab(el.dataset.tab); });
-    });
-
-    // Tickets-Dropdown (stabil per Klick, kein Hover-Schließen)
-    const ddWrap = $('nav-tickets-wrap');
-    const ddMenu = $('tickets-dropdown');
-    function ddOpen() {
-      if (ddWrap.classList.contains('hidden')) return;
-      const btn = $('nav-tickets');
-      const r = btn.getBoundingClientRect();
-      const w = r.width >= 230 ? r.width : 230;
-      const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
-      ddMenu.style.cssText = `position:fixed; top:${Math.round(r.bottom + 8)}px; left:${Math.round(left)}px; min-width:${w}px;`;
-      ddMenu.classList.remove('hidden');
-    }
-    function ddClose() { ddMenu.classList.add('hidden'); }
-    $('nav-tickets').addEventListener('click', (e) => {
-      e.stopPropagation();
-      showTab('tickets');
-      if (ddMenu.classList.contains('hidden')) ddOpen();
-      else ddClose();
-    });
-    $('dd-tickets-dashboard').addEventListener('click', () => { ddClose(); openTickets('dashboard'); });
-    $('dd-tickets-create').addEventListener('click', () => { ddClose(); openTickets('create'); });
-    document.addEventListener('click', (e) => { if (!e.target.closest('#nav-tickets-wrap')) ddClose(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ddClose(); });
-
-    // Theme
-    $('theme-toggle').addEventListener('click', toggleTheme);
-
-    // Auth
-    $('btn-open-auth').addEventListener('click', () => { setAuthMode('login'); openModal('modal-auth'); });
-    $('auth-toggle').addEventListener('click', () => setAuthMode(state.authMode === 'login' ? 'register' : 'login'));
-    $('auth-form').addEventListener('submit', submitAuth);
-    $('btn-discord-auth').addEventListener('click', () => { window.location = '/api/auth/discord'; });
-    $('btn-logout').addEventListener('click', logout);
-    $('btn-verify').addEventListener('click', verifyCode);
-    $('btn-resend-code').addEventListener('click', resendCode);
-    $('btn-setpass').addEventListener('click', setPassword);
-    $('auth-setpass').addEventListener('keydown', (e) => { if (e.key === 'Enter') setPassword(); });
-
-    // Verifizierung per Enter
-    $('verify-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyCode(); });
-
-    // Modal schließen
-    document.querySelectorAll('.modal [data-close]').forEach((b) => b.addEventListener('click', () => closeAllModals()));
-    document.querySelectorAll('.modal .modal-backdrop').forEach((bd) => bd.addEventListener('click', closeAllModals));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllModals(); });
-
-    // Bild ansehen
-    document.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-viewimage]');
-      if (t) openImageView(t.dataset.viewimage);
-    });
-    bindImageView();
-
-    VBG.shifts.bind();
-    VBG.tickets.bind();
-    VBG.nahverkehr.bind();
-    VBG.admin.bind();
-    if (VBG.notifications) VBG.notifications.bind();
-
-    // Benachrichtigungen regelmäßig aktualisieren (Badge)
-    setInterval(() => { if (state.user && VBG.notifications) VBG.notifications.refresh(); }, 60000);
-  }
-
-  function init() {
-    const saved = localStorage.getItem('vbg-theme') || 'light';
-    applyTheme(saved);
-
-    if (emailJSReady() && window.emailjs) {
-      emailjs.init({ publicKey: VBG.emailjs.publicKey });
-    }
-
-    const params = new URLSearchParams(location.search);
-    const authErr = params.get('auth_error');
-    if (authErr) { toast(authErr, 'err'); history.replaceState(null, '', location.pathname); }
-
-    $('footer-year').textContent = new Date().getFullYear();
-    $('shift-date').value = new Date().toISOString().slice(0, 10);
-
-    bind();
-    loadGallery();
-    loadNotices();
-
-    API.get('/api/me')
-      .then((data) => {
-        state.user = data.user;
-        updateAuthUI();
-        if (state.user) { VBG.shifts.load().catch(() => {}); loadNotices(); }
-      })
-      .catch(() => {});
-  }
-
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => App.init());
 })();

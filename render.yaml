@@ -13,11 +13,13 @@
         value: production
       - key: BASE_URL
         value: https://vbg-verkehrsbetriebe-gravenberg-website.onrender.com
-      - key: OWNER_EMAILS
-        value: janngenzmann@gmail.com,platzhalter1@gmail.com
-      - key: DISCORD_CLIENT_ID
-        value: 1546062033072427038
-      - key: DISCORD_CLIENT_SECRET
-        value: P354cAFZN8livniGXH3vk2QsKKm0rXg_
-      - key: DISCORD_WEBHOOK_URL
-        value: https://discord.com/api/webhooks/1546105557629272097/BKgveoQVKaQijk-LTHvP94OYKO93V9_qdsekT15-ut5AaUXaTgva4R3RsHyU7Hja_Omx
+      - key: TURSO_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_DISPLAYNAME
+        value: Administrator

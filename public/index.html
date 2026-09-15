@@ -3,683 +3,145 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>VBG Verkehrsbetriebe Gravenberg</title>
-<meta name="description" content="VBG Verkehrsbetriebe Gravenberg – Fiktives Roblox Bus-RP-Game. Tägliche Shifts, freundliches Team, Ticket-Support und Rollenspiel auf einer fiktiven Map."/>
-<meta name="keywords" content="Roblox, Bus, Fiktiv, Roleplay, VBG, Gravenberg, Verkehrsbetriebe, Bus-RP"/>
-<meta property="og:title" content="VBG Verkehrsbetriebe Gravenberg"/>
-<meta property="og:description" content="Fiktives Roblox Bus-RP-Game – täglich aktiv, mit freundlichem Team und Support-Tickets."/>
+<title>VBG Verwalter – Verkehrsbetriebe Gravenberg</title>
+<meta name="description" content="VBG Verwalter – Dienstplan, Anmeldung und Verwaltung der Verkehrsbetriebe Gravenberg. Fiktives Roblox Bus-RP-Game."/>
+<meta property="og:title" content="VBG Verwalter – Verkehrsbetriebe Gravenberg"/>
+<meta property="og:description" content="Dienstplan, Anmeldung und Verwaltung der Verkehrsbetriebe Gravenberg."/>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232e9e5b'/%3E%3Ctext x='16' y='22' font-family='Arial' font-size='15' font-weight='bold' fill='white' text-anchor='middle'%3EV%3C/text%3E%3C/svg%3E"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/style.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/css/style.css"/>
 </head>
 <body>
-<div id="toast-wrap"></div>
 
-<!-- ===================== NAVIGATION ===================== -->
-<nav class="nav">
-  <div class="nav-inner">
-    <button class="brand" data-tab="start">
-      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 17V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/>
-        <path d="M4 17a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2M15 17a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2"/>
-        <path d="M2 11h20M7 11V7M14 11V7"/>
-        <circle cx="16" cy="9" r=".5" fill="currentColor"/>
-      </svg>
-      <span class="brand-text"><b>VBG</b><span class="brand-sub">Verkehrsbetriebe Gravenberg</span></span>
-    </button>
+<div id="notices-bar" class="notices-bar hidden"></div>
 
-    <div class="nav-links">
-      <button class="nav-link active" data-tab="start">Start</button>
-      <button class="nav-link" data-tab="shifts">Shifts</button>
-      <button class="nav-link" data-tab="netzplan">Netzplan</button>
-      <button class="nav-link" data-tab="linien">Linienübersicht</button>
-      <button class="nav-link" data-tab="nahverkehr">Nahverkehr</button>
-      <div class="nav-dropdown hidden" id="nav-tickets-wrap">
-        <button class="nav-link" id="nav-tickets" data-tab="tickets">Tickets <span class="dd-caret">▾</span></button>
-        <div class="dropdown-menu hidden" id="tickets-dropdown">
-          <button class="dropdown-item hidden" id="dd-tickets-dashboard" type="button">📊 Ticket Dashboard</button>
-          <button class="dropdown-item" id="dd-tickets-create" type="button">➕ Ticket erstellen</button>
-        </div>
-      </div>
-      <button class="nav-link hidden" id="nav-admin" data-tab="admin">Admin</button>
-      <button class="nav-link hidden" id="nav-account" data-tab="account">Konto</button>
+<!-- ===================== LOGIN ===================== -->
+<div id="login-screen" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-badge">VBG</div>
+      <h1>Verkehrsbetriebe <span>Gravenberg</span></h1>
+      <p class="muted">Verwalter – Anmeldung für das Team</p>
     </div>
+    <form id="login-form" autocomplete="on">
+      <label class="field">
+        <span class="field-label">Benutzername</span>
+        <input class="input" id="login-username" name="username" autocomplete="username" required/>
+      </label>
+      <label class="field">
+        <span class="field-label">Passwort</span>
+        <input class="input" type="password" id="login-password" name="password" autocomplete="current-password" required/>
+      </label>
+      <div class="form-error hidden" id="login-error"></div>
+      <button class="btn btn-primary btn-full" type="submit">Anmelden</button>
+    </form>
+    <p class="muted login-note">Zugangsdaten erhältst du von der Leitung. Beim ersten Login musst du dein eigenes Passwort festlegen.</p>
+  </div>
+</div>
 
-    <div class="nav-actions">
-      <button class="icon-btn" id="theme-toggle" title="Helles / dunkles Design">
+<!-- ===================== EINMAL-PASSWORT ===================== -->
+<div id="pw-screen" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-badge">VBG</div>
+      <h1>Neues Passwort</h1>
+      <p class="muted">Du bist mit einem Einmal-Passwort angemeldet. Lege jetzt dein eigenes Passwort fest.</p>
+    </div>
+    <form id="pw-form">
+      <label class="field">
+        <span class="field-label">Neues Passwort</span>
+        <input class="input" type="password" id="pw-new" name="new_password" autocomplete="new-password" minlength="6" required/>
+      </label>
+      <label class="field">
+        <span class="field-label">Neues Passwort wiederholen</span>
+        <input class="input" type="password" id="pw-new-repeat" name="new_password_repeat" autocomplete="new-password" minlength="6" required/>
+      </label>
+      <div class="form-error hidden" id="pw-error"></div>
+      <button class="btn btn-primary btn-full" type="submit">Passwort festlegen</button>
+    </form>
+    <button class="btn btn-ghost btn-full mt" id="pw-logout">Abbrechen &amp; abmelden</button>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app" class="app hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand-badge">VBG</div>
+      <div class="sidebar-brand-text">
+        <b>VBG</b>
+        <span>Verkehrsbetriebe Gravenberg</span>
+      </div>
+      <button class="icon-btn sidebar-close" id="sidebar-close" title="Menü schließen" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-foot">
+      <div class="sidebar-user" id="sidebar-user"></div>
+      <button class="btn btn-ghost btn-sm btn-full mt" id="btn-logout-side">Abmelden</button>
+    </div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <div class="main-col">
+    <header class="topbar">
+      <button class="icon-btn" id="sidebar-open" title="Menü öffnen" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <div class="topbar-title" id="topbar-title">Start</div>
+      <div class="topbar-spacer"></div>
+      <button class="icon-btn" id="theme-toggle" title="Helles / dunkles Design" type="button">
         <svg id="icon-sun" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
         <svg id="icon-moon" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
-      <div id="notif-wrap" class="notif-wrap hidden">
-        <button class="icon-btn" id="btn-notif" title="Benachrichtigungen">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span id="notif-badge" class="notif-badge hidden">0</span>
-        </button>
-        <div id="notif-box" class="notif-box hidden">
-          <div class="notif-head">
-            <b>🔔 Benachrichtigungen</b>
-            <button class="btn-link" id="notif-clear" type="button">Alle leeren</button>
-          </div>
-          <div id="notif-list" class="notif-list"></div>
-        </div>
-      </div>
-      <div id="auth-buttons">
-        <button class="btn btn-ghost" id="btn-open-auth">Anmelden</button>
-      </div>
-      <button class="user-chip hidden" id="user-chip" data-tab="account">
-        <img id="user-avatar" alt="" class="avatar"/><span id="user-name"></span>
+      <button class="user-chip" id="user-chip" title="Profil öffnen" type="button">
+        <span class="avatar" id="user-avatar">?</span>
+        <span class="user-chip-info">
+          <span class="user-chip-name" id="user-name">–</span>
+          <span class="user-chip-role" id="user-role">–</span>
+        </span>
       </button>
-    </div>
-  </div>
-</nav>
+    </header>
 
-<!-- ===================== MELDUNGEN (BANNER) ===================== -->
-<div id="notices-bar" class="notices-bar hidden"></div>
+    <main class="page" id="page"></main>
 
-<main class="main">
-  <!-- ===================== START / LANDING ===================== -->
-  <section id="tab-start" class="tab active">
-    <div class="hero">
-      <img class="hero-bg" src="/IMGs/Bild1.png" alt="VBG Bus im Einsatz"/>
-      <div class="hero-overlay"></div>
-      <div class="hero-content">
-        <div class="hero-tags">
-          <span class="tag">#Roblox</span>
-          <span class="tag">#Bus</span>
-          <span class="tag">#Fiktiv</span>
-          <span class="tag">#Roleplay</span>
-        </div>
-        <h1 class="hero-title">VBG Verkehrsbetriebe <span class="hero-accent">Gravenberg</span></h1>
-        <p class="hero-sub">Fiktives Roblox Bus-RP-Game &nbsp;·&nbsp; Jeden Tag aktiv &nbsp;·&nbsp; Freundliches Team</p>
-        <p class="hero-text">
-          Wir sind ein realistisches Bus-Spiel in Roblox auf einer fiktiven Map. Täglich neue Updates,
-          respektvolles Miteinander und echter Shift-Roleplay – mit Spaß im Vordergrund.
-        </p>
-        <div class="hero-actions">
-          <button class="btn btn-primary" data-tab="shifts">Zu den Shifts</button>
-          <button class="btn btn-ghost-light" id="btn-hero-ticket" data-tab="tickets">Support-Ticket</button>
-        </div>
-        <div class="hero-note">🐾 Rein fiktives Spielprojekt – kein Bezug zu echten Verkehrsbetrieben.</div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-head">
-        <h2>Warum VBG?</h2>
-        <p>Unser Versprechen an die Community</p>
-      </div>
-      <div class="feature-grid">
-        <article class="card feature">
-          <div class="feature-icon">🚌</div>
-          <h3>Realistisches Bus-RP</h3>
-          <p>Wir spielen ein realistisches Bus-Roleplay auf einer fiktiven Map – authentisch, aber immer mit Spaß.</p>
-        </article>
-        <article class="card feature">
-          <div class="feature-icon">🤝</div>
-          <h3>Freundliches Team</h3>
-          <p>Respektvolles Miteinander ist bei uns Pflicht. Bei Problemen oder Fragen kannst du uns jederzeit ansprechen.</p>
-        </article>
-        <article class="card feature">
-          <div class="feature-icon">🔄</div>
-          <h3>Tägliche Updates</h3>
-          <p>Unser Team bringt täglich Updates, damit ihr euren Spaß und euer Rollenspiel immer weiter ausleben könnt.</p>
-        </article>
-        <article class="card feature">
-          <div class="feature-icon">🌙</div>
-          <h3>Bis in die Nacht</h3>
-          <p>Wir arbeiten bis spät in die Nacht – nur damit die Spieler unterwegs sein können und ihr Roleplay nie stockt.</p>
-        </article>
-      </div>
-    </div>
-
-    <div class="section section-alt">
-      <div class="section-head">
-        <h2>Impressionen</h2>
-        <p>Ein kleiner Blick auf unsere Welt</p>
-      </div>
-      <div class="gallery-grid" id="gallery-grid"></div>
-    </div>
-  </section>
-
-  <!-- ===================== SHIFTS ===================== -->
-  <section id="tab-shifts" class="tab">
-    <div class="page-head">
+    <footer class="footer">
       <div>
-        <h1>Shifts</h1>
-        <p>Alle anstehenden Bus-Shifts mit Datum, Uhrzeit und Vorschaubild.</p>
+        <b>VBG Verkehrsbetriebe Gravenberg</b>
+        <p class="muted">Dieses Projekt ist rein fiktiv und steht in keinem Bezug zu einem echten Verkehrsunternehmen.</p>
       </div>
-    </div>
-    <div class="subnav" id="shifts-subnav">
-      <button class="chip active" data-shiftsub="list">🗓️ Alle Shifts</button>
-      <button class="chip hidden" data-shiftsub="create">➕ Shift erstellen</button>
-    </div>
-    <div class="subpanel" id="shifts-list-panel">
-      <div class="toolbar">
-        <input class="input input-search" id="shift-search" type="search" placeholder="Schicht suchen …"/>
+      <div class="footer-links">
+        <a href="/impressum.html">Impressum</a>
+        <a href="/datenschutz.html">Datenschutz</a>
+        <a href="/archiv.html">Bildarchiv</a>
       </div>
-      <div id="shifts-list" class="shift-grid"></div>
-    </div>
-    <div class="subpanel hidden" id="shifts-create-panel">
-      <div class="card form-card">
-        <form id="shift-form" class="form">
-          <div class="modal-head"><h2>Neue Schicht</h2><p class="muted">Lege einen neuen Bus-Shift für die Community an.</p></div>
-          <label class="field">
-            <span>Titel</span>
-            <input class="input" id="shift-title" type="text" maxlength="80" required placeholder="Z. B. Nachtschicht Linie 1"/>
-          </label>
-          <div class="triple">
-            <label class="field">
-              <span>Datum</span>
-              <input class="input" id="shift-date" type="date" required/>
-            </label>
-            <label class="field">
-              <span>Start</span>
-              <input class="input" id="shift-time-start" type="time" required/>
-            </label>
-            <label class="field">
-              <span>Ende</span>
-              <input class="input" id="shift-time-end" type="time"/>
-            </label>
-          </div>
-          <label class="field">
-            <span>Shifthost</span>
-            <select class="input" id="shift-host">
-              <option value="">— Ohne Shifthost —</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Beschreibung</span>
-            <textarea class="input" id="shift-desc" rows="3" placeholder="Infos zu Route, Ablauf, Besonderheiten …"></textarea>
-          </label>
-          <div class="field">
-            <span>Bild</span>
-            <div class="img-tabs">
-              <button type="button" class="chip active" data-imgmode="gallery">📷 Aus Galerie</button>
-              <button type="button" class="chip" data-imgmode="upload">⬆️ Eigenes Bild</button>
-            </div>
-            <div id="imgmode-gallery">
-              <div id="shift-img-gallery" class="img-gallery"></div>
-            </div>
-            <div id="imgmode-upload" class="hidden">
-              <label class="dropzone" for="shift-file-input">
-                <input id="shift-file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden/>
-                <div class="dz-text" id="dz-text">Klick oder Datei hierher ziehen<br/><small>Wird automatisch komprimiert und in der Datenbank gespeichert.</small></div>
-              </label>
-              <img id="shift-upload-preview" class="upload-preview hidden" alt="Vorschau"/>
-            </div>
-          </div>
-          <div class="row gap">
-            <button class="btn btn-ghost btn-full" type="button" data-shiftsub="list">Abbrechen</button>
-            <button class="btn btn-primary btn-full" type="submit">Schicht veröffentlichen</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== NETZPLAN ===================== -->
-  <section id="tab-netzplan" class="tab">
-    <div class="page-head">
-      <div>
-        <h1>Netzplan</h1>
-        <p>Das aktuelle Liniennetz der VBG Gravenberg – klick für eine Großansicht. 🚏</p>
-      </div>
-    </div>
-    <button class="netzplan-card" data-viewimage="/IMGs/Netzplan_V1.png" title="Netzplan vergrößern">
-      <img src="/IMGs/Netzplan_V1.png" alt="Netzplan VBG Gravenberg"/>
-    </button>
-  </section>
-
-  <!-- ===================== LINIENÜBERSICHT ===================== -->
-  <section id="tab-linien" class="tab">
-    <div class="page-head">
-      <div>
-        <h1>Linienübersicht</h1>
-        <p>Alle Buslinien in Gravenberg auf einen Blick – mit Routen, Haltestellen und Fahrzeiten. 🚌</p>
-      </div>
-    </div>
-
-    <div class="lines-grid">
-      <article class="line-card">
-        <div class="line-head">
-          <span class="bl-chip" style="--bl:#2e9e5b">Linie 19</span>
-          <h2>Stümp · Neuenburg · Gravenberg</h2>
-        </div>
-        <div class="line-routes">
-          <p class="route-line">
-            <span class="route-stop">Stümp, Voiskamp</span>
-            <span class="route-arrow">⟷</span>
-            <span class="route-stop">Gravenberg, ZOB</span>
-            <span class="route-time">Fahrzeit: 16 Minuten</span>
-          </p>
-          <div class="route-variants">
-            <span>🚏 Stümp, Voiskamp → Gravenberg, ZOB</span>
-            <span>🚏 Gravenberg, ZOB → Stümp, Voiskamp</span>
-          </div>
-        </div>
-        <p class="line-desc">Die Linie 19 ist unsere Verbindungslinie von Stümp, Neuenburg und Gravenberg und hält auch an der Schule Neuenburg. Für die Anwohner in Neuenburg und Stümp ist sie die wichtigste Anbindung in die Innenstadt. Wer zu einer der Haltestellen entlang der Linie fahren möchte, ist hier richtig.</p>
-      </article>
-
-      <article class="line-card">
-        <div class="line-head">
-          <span class="bl-chip" style="--bl:#1b78c2">Linie SB24</span>
-          <h2>Schnellbus · Neuenburg – Gravenberg</h2>
-        </div>
-        <div class="line-routes">
-          <p class="route-line">
-            <span class="route-stop">Neuenburg, Schule</span>
-            <span class="route-arrow">⟷</span>
-            <span class="route-stop">Gravenberg, ZOB</span>
-            <span class="route-time">Fahrzeit: 8 Minuten</span>
-          </p>
-          <div class="route-variants">
-            <span>🚏 Neuenburg, Schule → Gravenberg, ZOB</span>
-            <span>🚏 Gravenberg, ZOB → Neuenburg, Schule</span>
-          </div>
-        </div>
-        <p class="line-desc">Die Schnellbuslinie SB24 verbindet Neuenburg und Gravenberg ohne große Umwege und ist vor allem für unsere Schüler*innen an der Schule Neuenburg wichtig. In nur 8 Minuten erreicht man den Gravenberger ZOB. Die SB24 fährt zwar schnell über Neuenburg, Schule – die Linie 19 bedient die Haltestelle aber ebenfalls.</p>
-      </article>
-    </div>
-  </section>
-
-  <!-- ===================== NAHVERKEHR ===================== -->
-  <section id="tab-nahverkehr" class="tab">
-    <div class="page-head">
-      <div>
-        <h1>VBG Nahverkehr</h1>
-        <p>Alle Abfahrten und Ankünfte in Echtzeit plus Verbindungssuche. 🚏</p>
-      </div>
-    </div>
-
-    <div class="board-toolbar">
-      <select class="input input-search" id="board-stop"></select>
-      <div class="chips" id="board-kind">
-        <button class="chip active" data-boardkind="abfahrt">🚌 Abfahrt</button>
-        <button class="chip" data-boardkind="ankunft">🛬 Ankunft</button>
-      </div>
-      <button class="btn btn-ghost" id="board-refresh">🔄 Aktualisieren</button>
-      <span class="muted" id="board-info">Haltestelle wählen, um die Tafel zu laden …</span>
-    </div>
-    <div id="board-list" class="board-list"></div>
-
-    <div class="card form-card mt">
-      <div class="modal-head"><h2>🔎 Verbindungssuche</h2><p class="muted">Finde eine direkte Verbindung oder einen Umstieg.</p></div>
-      <div class="row gap board-search-row">
-        <label class="field flex1"><span>Von</span><select class="input" id="search-from"></select></label>
-        <label class="field flex1"><span>Nach</span><select class="input" id="search-to"></select></label>
-        <label class="field"><span>Abfahrt</span><input class="input" id="search-time" type="time" value=""/></label>
-        <button class="btn btn-primary" id="search-run" style="align-self:flex-end">Suchen</button>
-      </div>
-      <div id="search-results"></div>
-      <div id="saved-conns" class="saved-conns"></div>
-    </div>
-  </section>
-
-  <!-- ===================== TICKETS ===================== -->
-  <section id="tab-tickets" class="tab">
-    <div class="page-head">
-      <div>
-        <h1>Tickets</h1>
-        <p id="tickets-subline">Erstelle ein Ticket – unser Team kümmert sich.</p>
-      </div>
-    </div>
-    <div class="subpanel" id="tickets-dashboard">
-      <div class="ticket-toolbar">
-        <div class="chips" id="ticket-filters">
-          <button class="chip active" data-filter="alle">Alle</button>
-          <button class="chip" data-filter="offen">Offen</button>
-          <button class="chip" data-filter="in_arbeit">In Arbeit</button>
-          <button class="chip" data-filter="geschlossen">Geschlossen</button>
-        </div>
-        <input class="input ticket-search" id="ticket-search" type="search" placeholder="Suchen (Thema, Nummer, Autor) …"/>
-      </div>
-      <div id="tickets-view"></div>
-    </div>
-    <div class="subpanel hidden" id="tickets-create">
-      <div class="card form-card">
-        <form id="ticket-form" class="form">
-          <div class="modal-head"><h2>Neues Ticket</h2><p class="muted">Beschreibe dein Anliegen – das Team meldet sich.</p></div>
-          <label class="field">
-            <span>Thema</span>
-            <input class="input" id="ticket-subject" type="text" maxlength="90" required placeholder="Z. B. Bewerbung als Busfahrer"/>
-          </label>
-          <div class="row gap">
-            <label class="field flex1">
-              <span>Kategorie</span>
-              <select class="input" id="ticket-category">
-                <option value="frage">❓ Frage</option>
-                <option value="problem">⚠️ Problem / Bug</option>
-                <option value="vorschlag">💡 Vorschlag</option>
-                <option value="bewerbung">📝 Bewerbung</option>
-                <option value="sonstiges">📦 Sonstiges</option>
-              </select>
-              <small class="muted field-hint" id="ticket-prio-hint">Priorität: Normal (automatisch)</small>
-            </label>
-          </div>
-          <label class="field">
-            <span>Beschreibung</span>
-            <textarea class="input" id="ticket-desc" rows="4" placeholder="Erkläre dein Anliegen so genau wie möglich …"></textarea>
-          </label>
-          <button class="btn btn-primary btn-full" type="submit">Ticket erstellen</button>
-        </form>
-      </div>
-      <div class="my-tickets">
-        <div class="section-head"><h2>Meine Tickets</h2><p id="my-tickets-sub" class="muted"></p></div>
-        <div id="my-tickets-list"></div>
-      </div>
-    </div>
-    <div id="ticket-chat" class="ticket-chat hidden">
-      <div class="chat-head">
-        <button class="icon-btn" id="chat-back" title="Zurück">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        </button>
-        <div class="chat-title">
-          <b id="chat-subject"></b>
-          <span id="chat-meta"></span>
-        </div>
-        <div class="chat-actions" id="chat-actions"></div>
-      </div>
-      <div id="chat-messages" class="chat-messages"></div>
-      <div class="chat-input">
-        <div class="chat-input-left">
-          <button class="icon-btn" id="chat-attach" title="Bild anhängen">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
-          <input class="hidden" type="file" id="chat-file" accept="image/*"/>
-          <div id="chat-attach-preview" class="attach-preview hidden"></div>
-        </div>
-        <textarea id="chat-text" rows="2" placeholder="Nachricht schreiben …"></textarea>
-        <button class="btn btn-primary" id="chat-send">Senden</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== ADMIN (Staff) ===================== -->
-  <section id="tab-admin" class="tab">
-    <div class="page-head">
-      <div>
-        <h1>Admin</h1>
-        <p>Meldungen an die Community und die Verwaltung aller Konten.</p>
-      </div>
-    </div>
-
-    <div class="admin-section">
-      <div class="section-head">
-        <h2>⚠️ Meldung erstellen</h2>
-        <p class="muted">Wird als gelbes Banner unter der Navigation angezeigt.</p>
-      </div>
-      <div class="card form-card">
-        <form id="notice-form" class="form">
-          <div class="row gap">
-            <label class="field flex1">
-              <span>Meldungstext</span>
-              <input class="input" id="notice-text" type="text" maxlength="300" required placeholder="Z. B. Wartungsarbeiten heute 18–20 Uhr"/>
-            </label>
-            <button class="btn btn-primary" type="submit">Veröffentlichen</button>
-          </div>
-        </form>
-      </div>
-      <div id="admin-notices" class="admin-list"></div>
-    </div>
-
-    <div class="admin-section">
-      <div class="section-head">
-        <h2>🚌 Nahverkehr Steuerung</h2>
-        <p class="muted">Betriebszeitraum setzen, einzelne Fahrten ausfallen lassen und Anschlüsse verwalten.</p>
-      </div>
-
-      <div class="steer-grid">
-        <div class="card form-card">
-          <h3>🕓 Fahrten-Zeitraum aktivieren</h3>
-          <p class="muted">Nur Fahrten, die <b>zwischen Uhrzeit 1 und Uhrzeit 2 starten</b>, sind aktiv. Alle anderen Fahrten sind standardmäßig deaktiviert.</p>
-          <div class="row gap">
-            <label class="field grow">Uhrzeit 1<input type="time" id="win-from" class="input" step="60"/></label>
-            <label class="field grow">Uhrzeit 2<input type="time" id="win-to" class="input" step="60"/></label>
-          </div>
-          <div class="row gap mt">
-            <button class="btn btn-primary btn-full" id="win-set">Aktivieren</button>
-            <button class="btn btn-ghost btn-full" id="win-clear">Zeitraum aufheben (alle aktiv)</button>
-          </div>
-          <p class="muted mt" id="win-status">Wird geladen …</p>
-        </div>
-
-        <div class="card">
-          <h3>🚏 Große Fahrtliste (aktive Fahrten)</h3>
-          <p class="muted">Alle aktiven Fahrten. Klick auf „Fahrt fällt aus" setzt die Fahrt aus, „Detail" zeigt die Halte zum einzelnen Ausfallen.</p>
-          <div class="row gap trip-filter-row">
-            <input class="input" id="trip-filter" type="search" placeholder="Linie, Kurs, Haltestelle …"/>
-            <select class="input" id="trip-line-filter">
-              <option value="">Alle Linien</option>
-            </select>
-          </div>
-          <div id="trip-list" class="trip-list mt"></div>
-        </div>
-
-        <div class="card">
-          <h3>🚏 Anschlussanfragen</h3>
-          <div id="req-list" class="admin-list"></div>
-        </div>
-
-        <div class="card">
-          <h3>🔗 Bestätigte Verbindungen</h3>
-          <div id="conn-list" class="admin-list"></div>
-        </div>
-      </div>
-    </div>
-      </div>
-    </div>
-
-    <div class="admin-section">
-      <div class="section-head">
-        <h2>👥 Kontoübersicht</h2>
-        <p class="muted">Alle registrierten Spieler und ihre Rollen.</p>
-      </div>
-      <input class="input input-search" id="user-search" type="search" placeholder="Spieler suchen …"/>
-      <div class="table-wrap">
-        <table class="users-table">
-          <thead><tr><th>Spieler</th><th>E-Mail</th><th>Rolle</th><th>Status</th><th></th><th></th></tr></thead>
-          <tbody id="users-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== KONTO ===================== -->
-  <section id="tab-account" class="tab">
-    <div class="page-head"><div><h1>Konto</h1><p>Dein Profil und deine Discord-Rollen.</p></div></div>
-
-    <div class="account-grid">
-      <div class="card profile-card">
-        <div class="profile-top">
-          <img id="profile-avatar" class="avatar avatar-xl" alt="" src=""/>
-          <div>
-            <h2 id="profile-name">–</h2>
-            <div class="profile-meta">
-              <span id="profile-role" class="role-badge">–</span>
-              <span id="profile-verified" class="verified">✓ Verifiziert</span>
-            </div>
-          </div>
-        </div>
-        <dl class="profile-dl">
-          <dt>E-Mail</dt><dd id="profile-email">–</dd>
-          <dt>Mitglied seit</dt><dd id="profile-created">–</dd>
-          <dt>Sign-In</dt><dd id="profile-provider">E-Mail</dd>
-        </dl>
-        <div id="profile-discord-roles" class="discord-roles"></div>
-        <div id="verify-banner" class="verify-banner hidden">
-          <p>Bestätige deine E-Mail, um die Team-Benachrichtigungen zu erhalten.</p>
-          <div class="row gap">
-            <input class="input" id="verify-code" inputmode="numeric" placeholder="6-stelliger Code"/>
-            <button class="btn btn-primary" id="btn-verify">Bestätigen</button>
-          </div>
-          <button class="btn-link" id="btn-resend-code">Code erneut senden</button>
-        </div>
-        <div id="password-banner" class="verify-banner hidden">
-          <p>Dein Konto hat noch kein Passwort. Lege eines fest, um dich auch per E-Mail anzumelden.</p>
-          <div class="row gap">
-            <input class="input" id="auth-setpass" type="password" minlength="6" placeholder="Mindestens 6 Zeichen" autocomplete="new-password"/>
-            <button class="btn btn-primary" id="btn-setpass">Passwort festlegen</button>
-          </div>
-        </div>
-        <button class="btn btn-danger btn-full mt" id="btn-logout">Abmelden</button>
-      </div>
-    </div>
-  </section>
-</main>
-
-<footer class="footer">
-  <div class="footer-inner">
-    <div class="footer-brand">
-      <b>VBG Verkehrsbetriebe Gravenberg</b>
-      <p class="muted">Fiktives Roblox Bus-RP-Game. <span class="tag tag-sm">#Roblox</span> <span class="tag tag-sm">#Bus</span> <span class="tag tag-sm">#Fiktiv</span></p>
-    </div>
-    <div class="footer-links">
-      <a href="/impressum.html">Impressum</a>
-      <a href="/datenschutz.html">Datenschutz</a>
-    </div>
-    <p class="muted footer-note">© <span id="footer-year"></span> VBG Verkehrsbetriebe Gravenberg. Dieses Projekt ist rein fiktiv und steht in keinem Bezug zu einem echten Verkehrsunternehmen.</p>
-  </div>
-</footer>
-
-<!-- ===================== MODALS ===================== -->
-<div id="modal-root"></div>
-
-<div class="modal hidden" id="modal-edit-ticket">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close icon-btn" data-close="modal-edit-ticket">✕</button>
-    <div class="modal-head"><h2>Ticket bearbeiten</h2><p class="muted">Änderungen werden im Verlauf protokolliert.</p></div>
-    <form id="ticket-edit-form" class="form">
-      <label class="field">
-        <span>Thema</span>
-        <input class="input" id="edit-ticket-subject" type="text" maxlength="90" required/>
-      </label>
-      <div class="row gap">
-        <label class="field flex1">
-          <span>Kategorie</span>
-          <select class="input" id="edit-ticket-category">
-            <option value="frage">❓ Frage</option>
-            <option value="problem">⚠️ Problem / Bug</option>
-            <option value="vorschlag">💡 Vorschlag</option>
-            <option value="bewerbung">📝 Bewerbung</option>
-            <option value="sonstiges">📦 Sonstiges</option>
-          </select>
-          <small class="muted field-hint" id="edit-ticket-prio-hint">Priorität: Normal (automatisch)</small>
-        </label>
-        <label class="field">
-          <span>Fällig bis</span>
-          <input class="input" id="edit-ticket-due" type="date"/>
-        </label>
-      </div>
-      <label class="field">
-        <span>Beschreibung</span>
-        <textarea class="input" id="edit-ticket-desc" rows="4" placeholder="Beschreibung des Anliegens …"></textarea>
-      </label>
-      <div class="row gap">
-        <button class="btn btn-ghost btn-full" type="button" data-close="modal-edit-ticket">Abbrechen</button>
-        <button class="btn btn-primary btn-full" type="submit">Speichern</button>
-      </div>
-    </form>
+    </footer>
   </div>
 </div>
 
-<div class="modal hidden" id="modal-image">
-  <div class="modal-backdrop" data-close="modal-image"></div>
-  <div class="modal-card modal-card-image">
-    <div class="image-viewport" id="image-viewport">
-      <img id="image-view" src="" alt="Bild" draggable="false"/>
-    </div>
-    <div class="zoom-btns">
-      <button class="zoom-btn" id="zoom-out" title="Verkleinern" type="button">−</button>
-      <button class="zoom-btn" id="zoom-reset" title="Ansicht zurücksetzen" type="button" style="font-size:0.85rem">⤢</button>
-      <button class="zoom-btn" id="zoom-in" title="Vergrößern" type="button">+</button>
-      <span class="zoom-level" id="zoom-level">100%</span>
-    </div>
-    <button class="modal-close icon-btn" data-close="modal-image">✕</button>
-  </div>
+<div id="toast-wrap"></div>
+
+<div id="image-view" class="lightbox hidden">
+  <button class="lightbox-close icon-btn" id="image-view-close" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+  <img id="image-view-img" src="" alt="Bild"/>
 </div>
 
-<div class="modal hidden" id="modal-logs">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card modal-card-lg">
-    <button class="modal-close icon-btn" data-close="modal-logs">✕</button>
-    <div class="modal-head">
-      <h2>📜 Aktivitäts-Logs</h2>
-      <p class="muted" id="logs-target">Letzte 10 Tage</p>
-    </div>
-    <div id="logs-body" class="logs-body"></div>
-  </div>
-</div>
-
-<div class="modal hidden" id="modal-notify">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close icon-btn" data-close="modal-notify">✕</button>
-    <div class="modal-head">
-      <h2>📨 Benachrichtigung senden</h2>
-      <p class="muted" id="notify-target">An: –</p>
-    </div>
-    <label class="field">
-      <span>Nachricht</span>
-      <textarea class="input" id="notify-text" rows="4" maxlength="500" placeholder="Kurze persönliche Nachricht an den Spieler …"></textarea>
-    </label>
-    <div class="row gap mt">
-      <button class="btn btn-ghost btn-full" type="button" data-close="modal-notify">Abbrechen</button>
-      <button class="btn btn-primary btn-full" id="notify-send" type="button">Senden</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal hidden" id="modal-auth">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close icon-btn" data-close="modal-auth">✕</button>
-    <div class="modal-head">
-      <h2 id="auth-title">Willkommen zurück</h2>
-      <p class="muted" id="auth-subline">Melde dich an oder erstelle ein Konto.</p>
-    </div>
-
-    <button class="btn btn-discord btn-full" id="btn-discord-auth">
-      <svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.8 13.8 0 0 0-.64 1.28 18.3 18.3 0 0 0-5.5 0 13.5 13.5 0 0 0-.64-1.28 19.7 19.7 0 0 0-4.93 1.51C.53 9.05-.32 13.58.1 18.05A19.9 19.9 0 0 0 7.08 21c.5-.67.94-1.38 1.31-2.13a12.8 12.8 0 0 1-2.05-1 15 15 0 0 0 1.6-1.3 11.4 11.4 0 0 0 9.83 0 14.6 14.6 0 0 0 1.6 1.3 12.8 12.8 0 0 1-2.05 1.02A13.4 13.4 0 0 0 18 21a19.9 19.9 0 0 0 6.9-2.95c.5-5.18-.84-9.67-3.58-13.68ZM8.02 15.33c-1.35 0-2.45-1.24-2.45-2.76s1.08-2.76 2.45-2.76 2.47 1.24 2.45 2.76c0 1.52-1.08 2.76-2.45 2.76Zm7.96 0c-1.35 0-2.45-1.24-2.45-2.76s1.08-2.76 2.45-2.76 2.46 1.24 2.45 2.76c0 1.52-1.09 2.76-2.45 2.76Z"/></svg>
-      Mit Discord anmelden
-    </button>
-
-    <div class="divider"><span>oder</span></div>
-
-    <form id="auth-form" class="form">
-      <label class="field">
-        <span>E-Mail</span>
-        <input class="input" id="auth-email" type="email" required placeholder="deine@email.de" autocomplete="email"/>
-      </label>
-      <label class="field hidden" id="auth-username-field">
-        <span>Nutzername</span>
-        <input class="input" id="auth-username" type="text" minlength="2" maxlength="24" placeholder="Dein Spitzname" autocomplete="username"/>
-      </label>
-      <label class="field">
-        <span>Passwort</span>
-        <input class="input" id="auth-password" type="password" minlength="6" required placeholder="••••••••" autocomplete="current-password"/>
-      </label>
-      <button class="btn btn-primary btn-full" id="auth-submit" type="submit">Anmelden</button>
-    </form>
-
-    <div class="auth-switch">
-      <span id="auth-switch-text">Noch kein Konto?</span>
-      <button class="btn-link" id="auth-toggle">Registrieren</button>
-    </div>
-    <p class="auth-note muted">Mit der Registrierung stimmst du unserem respektvollen Miteinander zu. Rollen (Besucher, Bearbeiter, Inhaber) werden vom Team vergeben.</p>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/api.js"></script>
-<script src="js/notifications.js"></script>
-<script src="js/shifts.js"></script>
-<script src="js/tickets.js"></script>
-<script src="js/nahverkehr.js"></script>
-<script src="js/admin.js"></script>
-<script src="js/app.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/pages/start.js"></script>
+<script src="/js/pages/anmeldung.js"></script>
+<script src="/js/pages/dienstplan.js"></script>
+<script src="/js/pages/meinedienste.js"></script>
+<script src="/js/pages/activity.js"></script>
+<script src="/js/pages/inactivity.js"></script>
+<script src="/js/pages/strafe.js"></script>
+<script src="/js/pages/profil.js"></script>
+<script src="/js/pages/admin.js"></script>
 </body>
 </html>

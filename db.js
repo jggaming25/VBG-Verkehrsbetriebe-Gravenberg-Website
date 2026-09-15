@@ -17,7 +17,7 @@ async function all(sql, args = []) {
 
 async function run(sql, args = []) {
   const res = await client.execute({ sql, args });
-  return { lastRowId: res.lastInsertRowid, rowsAffected: res.rowsAffected };
+  return { lastRowId: Number(res.lastInsertRowid), rowsAffected: res.rowsAffected };
 }
 
 async function transaction(work) {
@@ -25,7 +25,7 @@ async function transaction(work) {
   const t = {
     run: async (sql, args = []) => {
       const res = await tx.execute({ sql, args });
-      return { lastRowId: res.lastInsertRowid, rowsAffected: res.rowsAffected };
+      return { lastRowId: Number(res.lastInsertRowid), rowsAffected: res.rowsAffected };
     },
     get: async (sql, args = []) => (await tx.execute({ sql, args })).rows[0] || null,
     all: async (sql, args = []) => (await tx.execute({ sql, args })).rows
@@ -39,27 +39,58 @@ async function transaction(work) {
   }
 }
 
-async function hasColumn(table, column) {
+async function tableInfo(table) {
   const res = await client.execute(`PRAGMA table_info(${table})`);
-  return res.rows.some((r) => r.name === column);
+  return res.rows;
 }
 
+const DROP_TABLES = [
+  'sessions', 'activity', 'inactivity', 'strafzeiten', 'assignments', 'signups',
+  'dutys', 'shifts', 'news', 'linien', 'standorte', 'settings', 'users',
+  'tickets', 'ticket_messages', 'connections', 'messages', 'avatar_cache',
+  'fahrtausfaelle', 'notifications', 'announcements', 'fahrplan_cache', 'channels'
+];
+
 async function init() {
+  let legacy = false;
+  try {
+    const cols = await tableInfo('users');
+    if (cols.length && cols.some((c) => c.name === 'email')) legacy = true;
+  } catch (e) { /* taegliche Tabelle existiert nicht */ }
+
+  if (legacy) {
+    for (const t of DROP_TABLES) {
+      try { await client.execute(`DROP TABLE IF EXISTS ${t}`); } catch (e) { /* ignorieren */ }
+    }
+  }
+
+  await client.execute(`PRAGMA foreign_keys = ON`);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      username TEXT NOT NULL,
+      username TEXT UNIQUE NOT NULL,
+      display_name TEXT,
       password_hash TEXT,
-      role TEXT NOT NULL DEFAULT 'besucher',
-      verified INTEGER NOT NULL DEFAULT 0,
-      blocked INTEGER NOT NULL DEFAULT 0,
-      verify_code TEXT,
-      discord_id TEXT UNIQUE,
+      role TEXT NOT NULL DEFAULT 'busfahrer',
+      licenses TEXT NOT NULL DEFAULT '',
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
       avatar TEXT,
+      country_code TEXT DEFAULT '',
+      language TEXT DEFAULT 'de',
+      theme TEXT DEFAULT 'auto',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY,
@@ -67,6 +98,26 @@ async function init() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS linien (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      short TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      sort INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS standorte (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      sort INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS shifts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,179 +126,161 @@ async function init() {
       date TEXT NOT NULL,
       time_start TEXT NOT NULL,
       time_end TEXT,
-      image TEXT NOT NULL,
       host_id INTEGER REFERENCES users(id),
+      status TEXT NOT NULL DEFAULT 'draft',
       created_by INTEGER NOT NULL REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
   await client.execute(`
-    CREATE TABLE IF NOT EXISTS tickets (
+    CREATE TABLE IF NOT EXISTS dutys (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      subject TEXT NOT NULL,
-      category TEXT NOT NULL,
-      description TEXT,
-      status TEXT NOT NULL DEFAULT 'offen',
-      priority TEXT NOT NULL DEFAULT 'normal',
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      assignee_id INTEGER REFERENCES users(id),
-      due_date TEXT,
+      shift_id INTEGER REFERENCES shifts(id) ON DELETE CASCADE,
+      code TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'bus',
+      linie_id INTEGER REFERENCES linien(id),
+      wechsel_from INTEGER REFERENCES linien(id),
+      wechsel_to INTEGER REFERENCES linien(id),
+      standort_id INTEGER REFERENCES standorte(id),
+      fahrzeug TEXT,
+      start TEXT,
+      end TEXT,
+      license_id INTEGER REFERENCES linien(id),
+      note TEXT,
+      sort INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS signups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shift_id INTEGER NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preferred_duty_ids TEXT NOT NULL DEFAULT '',
+      preferred_ks_role TEXT DEFAULT '',
+      volunteer_strafe INTEGER NOT NULL DEFAULT 0,
+      preferred_standort_id INTEGER REFERENCES standorte(id),
+      available_start TEXT,
+      available_end TEXT,
+      needs_senior INTEGER NOT NULL DEFAULT 0,
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'angemeldet',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
   await client.execute(`
-    CREATE TABLE IF NOT EXISTS ticket_messages (
+    CREATE TABLE IF NOT EXISTS assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-      user_id INTEGER NOT NULL REFERENCES users(id),
-      message TEXT,
-      attachment TEXT,
-      is_system INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS notices (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      text TEXT NOT NULL,
-      created_by INTEGER NOT NULL REFERENCES users(id),
+      duty_id INTEGER NOT NULL REFERENCES dutys(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'haupt',
+      status TEXT NOT NULL DEFAULT 'vorgeschlagen',
+      source TEXT NOT NULL DEFAULT 'manual',
+      grund TEXT,
+      assigned_by INTEGER REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
-  /* ------------------------------ Nahverkehr (Fahrplan) ------------------------------ */
   await client.execute(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS stops (
+    CREATE TABLE IF NOT EXISTS activity (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT UNIQUE NOT NULL
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS trips (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      line TEXT NOT NULL,
-      course INTEGER NOT NULL,
-      direction TEXT NOT NULL,
-      seed_key TEXT UNIQUE
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS trip_stops (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      seq INTEGER NOT NULL,
-      stop_id INTEGER NOT NULL REFERENCES stops(id),
-      arr_min INTEGER,
-      dep_min INTEGER
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS trip_cancellations (
-      trip_id INTEGER PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE,
+      assignment_id INTEGER REFERENCES assignments(id) ON DELETE SET NULL,
+      duty_id INTEGER NOT NULL REFERENCES dutys(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      result TEXT NOT NULL,
+      note TEXT,
+      marked_by INTEGER REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
   await client.execute(`
-    CREATE TABLE IF NOT EXISTS stop_cancellations (
+    CREATE TABLE IF NOT EXISTS inactivity (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      stop_id INTEGER NOT NULL REFERENCES stops(id),
-      created_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(trip_id, stop_id)
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS connections (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      trip_a_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      trip_b_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      stop_id INTEGER NOT NULL REFERENCES stops(id),
-      created_by INTEGER REFERENCES users(id),
-      created_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(trip_a_id, trip_b_id, stop_id)
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS connection_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      from_trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      to_trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      stop_id INTEGER NOT NULL REFERENCES stops(id),
-      user_id INTEGER NOT NULL REFERENCES users(id),
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      reason TEXT,
       status TEXT NOT NULL DEFAULT 'offen',
+      decision_note TEXT,
+      decided_by INTEGER REFERENCES users(id),
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
-  await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trip_stops_trip_seq ON trip_stops (trip_id, seq)`);
-
-  /* ------------------------------ Benachrichtigungen / Logs / gespeicherte Verbindungen ------------------------------ */
   await client.execute(`
-    CREATE TABLE IF NOT EXISTS notifications (
+    CREATE TABLE IF NOT EXISTS strafzeiten (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      type TEXT NOT NULL DEFAULT 'info',
+      hours REAL NOT NULL,
+      covered REAL NOT NULL DEFAULT 0,
+      reason TEXT,
+      entered_by INTEGER REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS news (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
-      message TEXT,
-      read INTEGER NOT NULL DEFAULT 0,
+      body TEXT NOT NULL,
+      author_id INTEGER REFERENCES users(id),
+      pinned INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS saved_connections (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      label TEXT NOT NULL,
-      data TEXT NOT NULL,
-      until TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS user_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      action TEXT NOT NULL,
-      detail TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-  await client.execute(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read)`);
-  await client.execute(`CREATE INDEX IF NOT EXISTS idx_saved_connections_user ON saved_connections (user_id)`);
-  await client.execute(`CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs (user_id, created_at)`);
 
-  // Migrationen für ältere Schemas
-  if (await hasColumn('users', 'password_hash') && !await hasColumn('users', 'discord_id')) {
-    await client.execute(`ALTER TABLE users ADD COLUMN discord_id TEXT UNIQUE`);
+  const settingsDefaults = {
+    meldung_active: '0',
+    meldung_text: '',
+    signup_close_minutes: '60',
+    staff_start_minutes: '30',
+    strafe_schwelle_hours: '3',
+    strafe_dauer_hours: '1.5',
+    strafe_name: 'Kundenservice-Strafe',
+    max_duty_wishes: '5'
+  };
+  for (const [k, v] of Object.entries(settingsDefaults)) {
+    await client.execute(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`, [k, v]);
   }
-  if (!(await hasColumn('users', 'avatar'))) {
-    await client.execute(`ALTER TABLE users ADD COLUMN avatar TEXT`);
+
+  const linienCount = await get(`SELECT COUNT(*) AS n FROM linien`);
+  if (!linienCount || linienCount.n === 0) {
+    const seedLines = [
+      ['Linie 19', '19', 1],
+      ['SB27', 'SB27', 2],
+      ['Linie 8', '8', 3],
+      ['N1', 'N1', 4]
+    ];
+    for (const l of seedLines) {
+      await client.execute(`INSERT INTO linien (name, short, active, sort) VALUES (?, ?, 1, ?)`, l);
+    }
   }
-  if (!(await hasColumn('users', 'blocked'))) {
-    await client.execute(`ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0`);
+
+  const standortCount = await get(`SELECT COUNT(*) AS n FROM standorte`);
+  if (!standortCount || standortCount.n === 0) {
+    await client.execute(`INSERT INTO standorte (name, active, sort) VALUES ('Gravenberg ZOB', 1, 0)`);
   }
-  if (!(await hasColumn('shifts', 'host_id'))) {
-    await client.execute(`ALTER TABLE shifts ADD COLUMN host_id INTEGER REFERENCES users(id)`);
-  }
-  if (!(await hasColumn('users', 'discord_roles'))) {
-    await client.execute(`ALTER TABLE users ADD COLUMN discord_roles TEXT`);
-  }
-  if (!(await hasColumn('tickets', 'due_date'))) {
-    await client.execute(`ALTER TABLE tickets ADD COLUMN due_date TEXT`);
-  }
-  if (!(await hasColumn('tickets', 'archive_token'))) {
-    await client.execute(`ALTER TABLE tickets ADD COLUMN archive_token TEXT`);
-  }
-  if (!(await hasColumn('ticket_messages', 'attachment'))) {
-    await client.execute(`ALTER TABLE ticket_messages ADD COLUMN attachment TEXT`);
+
+  const adminCount = await get(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`);
+  if (!adminCount || adminCount.n === 0) {
+    const bcrypt = require('bcryptjs');
+    const username = (process.env.ADMIN_USERNAME || 'admin').toLowerCase();
+    const oneTime = process.env.ADMIN_PASSWORD || 'admin123';
+    const hash = await bcrypt.hash(oneTime, 10);
+    await client.execute(
+      `INSERT INTO users (username, display_name, password_hash, role, licenses, must_change_password, active)
+       VALUES (?, ?, ?, 'admin', '', 1, 1)`,
+      [username, process.env.ADMIN_DISPLAYNAME || 'Administrator', hash]
+    );
+    console.log('[seed] Admin erstellt: Benutzername=' + username + ' Einmal-Passwort=' + oneTime + ' (bitte beim ersten Login ändern)');
   }
 }
 
-module.exports = { client, get, all, run, transaction, init };
+module.exports = { get, all, run, transaction, hasColumn: tableInfo, init };

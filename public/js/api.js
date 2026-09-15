@@ -1,10 +1,19 @@
-/* VBG – einfacher API-Client */
+/* VBG Verwalter – API-Client mit CSRF-Schutz */
 const API = {
+  csrf: '',
+  getCsrf() {
+    const m = document.cookie.match(/(?:^|; )vbg_csrf=([^;]*)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  },
   async req(method, url, body) {
     const opts = { method, headers: {} };
     if (body !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
+    }
+    if (method !== 'GET' && method !== 'HEAD') {
+      const csrf = this.getCsrf() || this.csrf;
+      if (csrf) opts.headers['X-CSRF-Token'] = csrf;
     }
     const res = await fetch(url, opts);
     let data = null;
@@ -23,33 +32,54 @@ const API = {
   del: (u) => API.req('DELETE', u)
 };
 
-/* Gemeinsame Helfer */
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function fmtDateISO(iso) {
+function roleLabel(role) {
+  return { busfahrer: 'Busfahrer', senior: 'Senior Busfahrer', admin: 'Admin' }[role] || role || '';
+}
+
+function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso.length === 10 ? iso + 'T00:00:00' : iso);
   if (isNaN(d)) return iso;
-  return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function fmtDateTime(dt) {
   if (!dt) return '';
-  const d = new Date(dt + 'Z');
+  const d = new Date((dt.length === 16 ? dt + ':00' : dt));
   if (isNaN(d)) return dt;
   return d.toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+function fmtTime(dt) {
+  if (!dt) return '';
+  if (String(dt).length <= 5) return dt;
+  const d = new Date(dt.length === 16 ? dt + ':00' : dt);
+  if (isNaN(d)) return dt;
+  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function dtToInput(s) {
+  if (!s) return '';
+  return String(s).slice(0, 16).replace('T', 'T');
+}
+
+function parseCSV(s) {
+  return String(s || '').split(',').filter(Boolean).map((x) => parseInt(x, 10));
+}
+
 function avatarHtml(user, sizeClass) {
-  if (user && user.avatar) {
-    return `<img class="avatar ${sizeClass || ''}" src="${esc(user.avatar)}" alt=""/>`;
-  }
-  const name = (user && user.username) || '?';
+  if (!user) return '';
+  const name = user.display_name || user.username || '?';
   const ch = esc(name.trim().charAt(0).toUpperCase() || '?');
+  if (user.avatar) {
+    return `<span class="avatar ${sizeClass || ''}" style="background:transparent"><img src="${esc(user.avatar)}" alt=""/></span>`;
+  }
   return `<span class="avatar ${sizeClass || ''}">${ch}</span>`;
 }
 
