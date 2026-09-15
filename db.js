@@ -55,8 +55,8 @@ async function init() {
   let legacy = false;
   try {
     const cols = await tableInfo('users');
-    if (cols.length && cols.some((c) => c.name === 'email')) legacy = true;
-  } catch (e) { /* taegliche Tabelle existiert nicht */ }
+    if (cols.length && cols.every((c) => c.name !== 'display_name')) legacy = true;
+  } catch (e) { /* Tabelle existiert noch nicht */ }
 
   if (legacy) {
     for (const t of DROP_TABLES) {
