@@ -338,6 +338,7 @@ const AdminPage = {
     const persistedShift = parseInt(localStorage.getItem('vbg_admin_shift') || '0', 10);
     const currentShift = shifts.find((s) => s.id === persistedShift) || shifts[0];
     const filtered = currentShift ? (data.duties || []).filter((d) => d.shift_id === currentShift.id) : [];
+    const dutyById = new Map(filtered.map((d) => [d.id, d]));
 
     body.innerHTML = `
       <div class="panel">
@@ -391,7 +392,7 @@ const AdminPage = {
               <thead><tr><th>Code</th><th>Typ</th><th>Linie / Wechsel / Standort · Fahrten</th><th>Zeit</th><th>Fahrzeug</th><th>Lizenz</th><th>Besetzt</th><th></th></tr></thead>
               <tbody>
                 ${filtered.sort((a, b) => (a.start || '').localeCompare(b.start || '')).map((d) => `
-                  <tr data-duid="${d.id}" data-duty="${JSON.stringify({ id: d.id, code: d.code, type: d.type, linie_id: d.linie_id, wechsel_from: d.wechsel_from, wechsel_to: d.wechsel_to, standort_id: d.standort_id, fahrzeug: d.fahrzeug, start: d.start, end: d.end, license_id: d.license_id, note: d.note })}">
+                  <tr data-duid="${d.id}">
                     <td><b>${esc(d.code)}</b></td>
                     <td>${esc(VBG.dutyTypes[d.type] || d.type)}</td>
                     <td class="muted-sm">
@@ -527,8 +528,8 @@ const AdminPage = {
 
     body.querySelectorAll('[data-editdut]').forEach((b) => {
       b.addEventListener('click', () => {
-        const row = body.querySelector(`tr[data-duid="${b.dataset.editdut}"]`);
-        const d = JSON.parse(row.dataset.duty);
+        const d = dutyById.get(parseInt(b.dataset.editdut, 10));
+        if (!d) return;
         d.shift_id = currentShift.id;
         fillEdit(d, body.querySelector('#duty-edit-slot'));
       });
