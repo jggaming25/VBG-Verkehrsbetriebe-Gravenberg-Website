@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -89,14 +89,14 @@ async function requireAuth(req, res, next) {
 
 function requireScheduler(req, res, next) {
   if (req.user.role !== 'admin' && req.user.role !== 'senior') {
-    return res.status(403).json({ error: 'Keine Berechtigung für diese Aktion.' });
+    return res.status(403).json({ error: 'Keine Berechtigung fÃ¼r diese Aktion.' });
   }
   next();
 }
 
 function requireAdmin(req, res, next) {
   if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Nur für Administratoren.' });
+    return res.status(403).json({ error: 'Nur fÃ¼r Administratoren.' });
   }
   next();
 }
@@ -106,7 +106,7 @@ function csrfCheck(req, res, next) {
   const header = req.get('x-csrf-token');
   const cookie = req.cookies && req.cookies.vbg_csrf;
   if (!header || !cookie || header !== cookie) {
-    return res.status(403).json({ error: 'Ungültiges CSRF-Token. Seite neu laden?' });
+    return res.status(403).json({ error: 'UngÃ¼ltiges CSRF-Token. Seite neu laden?' });
   }
   next();
 }
@@ -160,7 +160,7 @@ app.post('/api/password', requireAuth, async (req, res) => {
   const nw = String(req.body.new_password || '');
   const rp = String(req.body.new_password_repeat || '');
   if (nw.length < 6) return res.status(400).json({ error: 'Das neue Passwort muss mindestens 6 Zeichen haben.' });
-  if (nw !== rp) return res.status(400).json({ error: 'Die Passwörter stimmen nicht überein.' });
+  if (nw !== rp) return res.status(400).json({ error: 'Die PasswÃ¶rter stimmen nicht Ã¼berein.' });
   const okPw = await bcrypt.compare(cur, req.user.password_hash);
   if (!okPw) return res.status(400).json({ error: 'Das aktuelle Passwort ist falsch.' });
   const hash = await bcrypt.hash(nw, 10);
@@ -172,7 +172,7 @@ app.post('/api/password/first', requireAuth, async (req, res) => {
   const nw = String(req.body.new_password || '');
   const rp = String(req.body.new_password_repeat || '');
   if (nw.length < 6) return res.status(400).json({ error: 'Das Passwort muss mindestens 6 Zeichen haben.' });
-  if (nw !== rp) return res.status(400).json({ error: 'Die Passwörter stimmen nicht überein.' });
+  if (nw !== rp) return res.status(400).json({ error: 'Die PasswÃ¶rter stimmen nicht Ã¼berein.' });
   const hash = await bcrypt.hash(nw, 10);
   await db.run(`UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?`, [hash, req.user.id]);
   res.json({ ok: true });
@@ -259,12 +259,12 @@ function dutyFull(row) {
     standort_id: row.standort_id, standort: row.standort || '',
     fahrzeug: row.fahrzeug || '', start: row.start, end: row.end,
     license_id: row.license_id, license: row.license_name || '',
-    note: row.note || '', sort: row.sort
+    color: row.linie_color || '', note: row.note || '', sort: row.sort
   };
 }
 
 const DUTY_SELECT = `
-  SELECT d.*, l.name AS linie,
+  SELECT d.*, l.name AS linie, l.farbe AS linie_color,
          wf.name AS wechsel_from_name, wt.name AS wechsel_to_name,
          st.name AS standort, lg.name AS license_name
   FROM dutys d
@@ -285,7 +285,9 @@ async function attachFahrten(duties) {
   if (!duties.length) return duties;
   const ids = duties.map((d) => d.id);
   const rows = await db.all(
-    `SELECT * FROM fahrten WHERE duty_id IN (${ids.map(() => '?').join(',')}) ORDER BY duty_id, seq`,
+    `SELECT f.*, cl.farbe AS color FROM fahrten f
+     LEFT JOIN linien cl ON cl.short = f.linie
+     WHERE f.duty_id IN (${ids.map(() => '?').join(',')}) ORDER BY f.duty_id, f.seq`,
     ids
   );
   const byDuty = {};
@@ -360,13 +362,24 @@ app.get('/api/meine-dienste', requireAuth, async (req, res) => {
     LEFT JOIN dutys fz ON fz.id = d.id
     WHERE a.user_id = ? AND a.status = 'bestaetigt'
     ORDER BY d.start`, [req.user.id]);
+  const dutyIds = [...new Set(assignments.map((a) => a.duty_id).filter(Boolean))];
+  let fahrtenRows = [];
+  if (dutyIds.length) {
+    fahrtenRows = await db.all(
+      `SELECT f.*, cl.farbe AS color FROM fahrten f
+       LEFT JOIN linien cl ON cl.short = f.linie
+       WHERE f.duty_id IN (${dutyIds.map(() => '?').join(',')}) ORDER BY f.duty_id, f.seq`, dutyIds);
+  }
+  const fahrtenByDuty = {};
+  for (const f of fahrtenRows) (fahrtenByDuty[f.duty_id] = fahrtenByDuty[f.duty_id] || []).push(f);
   res.json({
     shifts,
     assignments: assignments.map((a) => ({
       id: a.id, duty_id: a.duty_id, shift_id: a.shift_id, shift_title: a.shift_title, shift_date: a.shift_date,
       code: a.duty_code, start: a.duty_start, end: a.duty_end, type: a.duty_type,
       linie: a.linie, standort: a.standort, wechsel_from_name: a.wechsel_from_name, wechsel_to_name: a.wechsel_to_name,
-      kind: a.kind, status: a.status, fahrzeug: a.fahrzeug
+      kind: a.kind, status: a.status, fahrzeug: a.fahrzeug,
+      fahrten: fahrtenByDuty[a.duty_id] || []
     }))
   });
 });
@@ -412,7 +425,7 @@ app.post('/api/anmeldung', requireAuth, async (req, res) => {
   const shiftId = parseInt(req.body.shift_id, 10);
   const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [shiftId]);
   if (!shift || shift.status !== 'published') return res.status(400).json({ error: 'Shift nicht gefunden.' });
-  if (signupState(shift, settings, new Date()) !== 'offen') return res.status(400).json({ error: 'Die Anmeldung für diese Shift ist geschlossen.' });
+  if (signupState(shift, settings, new Date()) !== 'offen') return res.status(400).json({ error: 'Die Anmeldung fÃ¼r diese Shift ist geschlossen.' });
 
   const rawWish = Array.isArray(req.body.preferred_duty_ids) ? req.body.preferred_duty_ids : [];
   const maxWish = settings.max_duty_wishes;
@@ -455,7 +468,7 @@ app.delete('/api/anmeldung/:shiftId', requireAuth, async (req, res) => {
   const confirmed = await db.get(`
     SELECT a.id FROM assignments a JOIN dutys d ON d.id = a.duty_id
     WHERE d.shift_id = ? AND a.user_id = ? AND a.status = 'bestaetigt'`, [shiftId, req.user.id]);
-  if (confirmed) return res.status(400).json({ error: 'Für diese Shift bist du bereits fest eingeteilt. Wende dich an die Leitung.' });
+  if (confirmed) return res.status(400).json({ error: 'FÃ¼r diese Shift bist du bereits fest eingeteilt. Wende dich an die Leitung.' });
   await db.run(`DELETE FROM signups WHERE shift_id = ? AND user_id = ?`, [shiftId, req.user.id]);
   res.json({ ok: true });
 });
@@ -690,6 +703,148 @@ app.post('/api/admin/activity', requireAuth, requireScheduler, async (req, res) 
   res.json({ ok: true });
 });
 
+/* -------------------- Activity: Fahrer-Selbstanmeldung (60 % Fahrtzeit) -------------------- */
+
+function toDm(v) {
+  const d = new Date(String(v || '').length === 16 ? v + ':00' : v);
+  return isNaN(d) ? null : d.getTime();
+}
+
+/* Nur die REINE Fahrzeit (Fahrten vonâ€“bis) zÃ¤hlt. Return: Minuten + exakter Ã–ffnungszeitpunkt. */
+function drivingProgress(fahrten, nowIso) {
+  const nowMs = new Date(nowIso).getTime();
+  const trips = (fahrten || []).slice().sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  let totalMin = 0;
+  for (const f of trips) {
+    const s = toDm(f.start), e = toDm(f.end);
+    if (s === null || e === null || e <= s) continue;
+    totalMin += (e - s) / 60000;
+  }
+  const thresholdMin = totalMin * 0.6;
+  let doneMin = 0;
+  for (const f of trips) {
+    const s = toDm(f.start), e = toDm(f.end);
+    if (s === null || e === null || e <= s) continue;
+    if (e <= nowMs) doneMin += (e - s) / 60000;
+    else if (s < nowMs) { doneMin += (nowMs - s) / 60000; break; }
+  }
+  let atJs = null, atTrip = null;
+  let acc = 0;
+  for (const f of trips) {
+    const s = toDm(f.start), e = toDm(f.end);
+    if (s === null || e === null || e <= s) continue;
+    const dur = (e - s) / 60000;
+    if (acc + dur >= thresholdMin) {
+      const need = thresholdMin - acc;
+      atJs = new Date(s + need * 60000);
+      atTrip = { linie: f.linie, kurs: f.kurs, richtung: f.richtung, von: f.von, nach: f.nach, start: f.start, end: f.end };
+      break;
+    }
+    acc += dur;
+  }
+  return {
+    totalMin: Math.round(totalMin),
+    doneMin: totalMin > 0 && doneMin > 0 ? Math.round(doneMin * 10) / 10 : 0,
+    thresholdMin: Math.round(thresholdMin * 10) / 10,
+    pct: totalMin > 0 ? Math.min(100, Math.round((doneMin / totalMin) * 1000) / 10) : 0,
+    reached: totalMin > 0 && doneMin >= thresholdMin - 1e-9,
+    atIso: atJs ? atJs.toISOString() : null,
+    atTrip
+  };
+}
+
+function isoTimeShort(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' Uhr';
+}
+
+app.get('/api/activity-status', requireAuth, async (req, res) => {
+  const shiftId = parseInt(req.query.shift_id || '0', 10);
+  const nowIso = new Date();
+  if (!shiftId) return res.json({ ok: true, noDuty: true, now: nowIso.toISOString() });
+  const asg = await db.get(`
+    SELECT a.id, a.duty_id, d.code, d.start, d.end
+    FROM assignments a
+    JOIN dutys d ON d.id = a.duty_id
+    WHERE a.user_id = ? AND a.kind = 'haupt' AND a.status = 'bestaetigt' AND d.shift_id = ?
+    ORDER BY d.start DESC LIMIT 1`, [req.user.id, shiftId]);
+  if (!asg) return res.json({ ok: true, noDuty: true, now: nowIso.toISOString() });
+  const fahrten = await db.all(`SELECT * FROM fahrten WHERE duty_id = ? ORDER BY seq`, [asg.duty_id]);
+  const prog = drivingProgress(fahrten, nowIso);
+  const signed = await db.get(
+    `SELECT id, created_at FROM activity WHERE user_id = ? AND duty_id = ? AND result = 'teilgenommen' ORDER BY id DESC LIMIT 1`,
+    [req.user.id, asg.duty_id]);
+  res.json({
+    ok: true, now: nowIso.toISOString(),
+    duty: { id: asg.duty_id, code: asg.code, start: asg.start, end: asg.end, anzahl_fahrten: fahrten.length },
+    driving: prog,
+    signed: !!signed, signedAt: signed ? signed.created_at : null,
+    assignment_id: asg.id
+  });
+});
+
+app.post('/api/activity/sign', requireAuth, async (req, res) => {
+  const dutyId = parseInt(req.body.duty_id, 10);
+  const asg = await db.get(`
+    SELECT a.id, d.code FROM assignments a JOIN dutys d ON d.id = a.duty_id
+    WHERE a.user_id = ? AND a.kind = 'haupt' AND a.status = 'bestaetigt' AND a.duty_id = ?`,
+    [req.user.id, dutyId]);
+  if (!asg) return res.status(403).json({ error: 'Kein bestÃ¤tigter Haupt-Dienst fÃ¼r diese Fahrt.' });
+  const existing = await db.get(`SELECT id FROM activity WHERE user_id = ? AND duty_id = ?`, [req.user.id, dutyId]);
+  if (existing) return res.status(400).json({ error: 'Du bist bereits fÃ¼r die Activity angemeldet.' });
+  const fahrten = await db.all(`SELECT * FROM fahrten WHERE duty_id = ? ORDER BY seq`, [dutyId]);
+  if (!fahrten.length) return res.status(400).json({ error: 'Dieser Dienst hat keine Fahrtenliste â€“ bitte Dienste neu generieren.' });
+  const prog = drivingProgress(fahrten, new Date());
+  if (!prog.reached || !prog.atIso) {
+    return res.status(403).json({ error: prog.atIso ? 'Anmeldung erst ab ' + isoTimeShort(prog.atIso) + ' mÃ¶glich (60 % der reinen Fahrzeit).' : 'Dienst noch nicht gestartet â€“ Anmeldung ab 60 % der reinen Fahrzeit.' });
+  }
+  await db.run(`INSERT INTO activity (assignment_id, duty_id, user_id, result, note, marked_by) VALUES (?, ?, ?, 'teilgenommen', 'Selbst angemeldet nach 60 % Fahrtzeit', ?)`,
+    [asg.id, dutyId, req.user.id, req.user.id]);
+  res.json({ ok: true });
+});
+
+/* -------------------- Activity: Admin-Ãœbersicht (alle Personen, Statistik) -------------------- */
+
+app.get('/api/admin/activity-all', requireAuth, requireScheduler, async (req, res) => {
+  const shifts = (await db.all(`SELECT * FROM shifts ORDER BY date DESC, time_start DESC, id DESC`)).map(shiftRow);
+  const items = await db.all(`
+    SELECT a.id AS assignment_id, a.user_id, u.username, u.display_name,
+           d.id AS duty_id, d.code AS duty_code, d.start AS duty_start, d.end AS duty_end, d.shift_id, d.type AS duty_type,
+           s.title AS shift_title, s.date AS shift_date,
+           ac.id AS activity_id, ac.result AS activity_result, ac.note AS activity_note, ac.created_at AS activity_at
+    FROM assignments a
+    JOIN dutys d ON d.id = a.duty_id
+    JOIN shifts s ON s.id = d.shift_id
+    JOIN users u ON u.id = a.user_id
+    LEFT JOIN activity ac ON ac.user_id = a.user_id AND ac.duty_id = a.duty_id
+    WHERE a.kind = 'haupt' AND a.status = 'bestaetigt'
+    ORDER BY s.date DESC, d.start, u.username`);
+  const perShift = [];
+  const totals = { gesamt: 0, teil: 0, fehlt: 0, offen: 0 };
+  const byShift = {};
+  for (const it of items) (byShift[it.shift_id] = byShift[it.shift_id] || []).push(it);
+  for (const sid of Object.keys(byShift)) {
+    const list = byShift[sid];
+    let teil = 0, fehlt = 0, offen = 0;
+    for (const it of list) {
+      if (it.activity_result === 'teilgenommen') teil++;
+      else if (it.activity_result === 'nicht_teilgenommen') fehlt++;
+      else offen++;
+    }
+    const shift = shifts.find((s) => s.id === Number(sid)) || {};
+    perShift.push({
+      shift_id: Number(sid), title: shift.title || String(sid), date: shift.date || '',
+      gesamt: list.length, teil, fehlt, offen,
+      quote: list.length ? Math.round((teil / list.length) * 1000) / 10 : 0
+    });
+    totals.gesamt += list.length; totals.teil += teil; totals.fehlt += fehlt; totals.offen += offen;
+  }
+  res.json({
+    shifts, items, perShift,
+    totals: { ...totals, quote: totals.gesamt ? Math.round((totals.teil / totals.gesamt) * 1000) / 10 : 0 }
+  });
+});
+
 /* -------------------------------- Inactivity -------------------------------- */
 
 app.get('/api/inactivity', requireAuth, async (req, res) => {
@@ -707,7 +862,7 @@ app.post('/api/inactivity', requireAuth, async (req, res) => {
   const end = String(req.body.end_date || '');
   const reason = String(req.body.reason || '').trim().slice(0, 300);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
-    return res.status(400).json({ error: 'Ungültiger Zeitraum.' });
+    return res.status(400).json({ error: 'UngÃ¼ltiger Zeitraum.' });
   }
   if (end < start) return res.status(400).json({ error: 'Das Ende liegt vor dem Beginn.' });
   const days = Math.round((new Date(end) - new Date(start)) / 86400000);
@@ -791,7 +946,7 @@ app.post('/api/admin/strafe', requireAuth, requireScheduler, async (req, res) =>
   const userId = parseInt(req.body.user_id, 10);
   const hours = parseFloat(req.body.hours);
   const reason = String(req.body.reason || '').trim().slice(0, 300);
-  if (!userId || !(hours > 0) || hours > 120) return res.status(400).json({ error: 'Ungültige Eingabe.' });
+  if (!userId || !(hours > 0) || hours > 120) return res.status(400).json({ error: 'UngÃ¼ltige Eingabe.' });
   const u = await db.get(`SELECT * FROM users WHERE id = ?`, [userId]);
   if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
   await db.run(`INSERT INTO strafzeiten (user_id, hours, reason, entered_by) VALUES (?, ?, ?, ?)`, [userId, hours, reason, req.user.id]);
@@ -802,7 +957,7 @@ app.post('/api/admin/strafe-config', requireAuth, requireAdmin, async (req, res)
   const schwelle = parseFloat(req.body.schwelle_hours);
   const dauer = parseFloat(req.body.dauer_hours);
   const name = String(req.body.name || '').trim().slice(0, 60);
-  if (!(schwelle > 0) || !(dauer > 0) || !name) return res.status(400).json({ error: 'Ungültige Eingabe.' });
+  if (!(schwelle > 0) || !(dauer > 0) || !name) return res.status(400).json({ error: 'UngÃ¼ltige Eingabe.' });
   await db.run(`UPDATE settings SET value = ? WHERE key = 'strafe_schwelle_hours'`, [String(schwelle)]);
   await db.run(`UPDATE settings SET value = ? WHERE key = 'strafe_dauer_hours'`, [String(dauer)]);
   await db.run(`UPDATE settings SET value = ? WHERE key = 'strafe_name'`, [name]);
@@ -845,8 +1000,8 @@ app.post('/api/admin/strafe-generate', requireAuth, requireScheduler, async (req
     if (standorte.length) {
       await db.run(`UPDATE dutys SET standort_id = ? WHERE id = ?`, [standorte[0].id, duty.id]);
     }
-    await db.run(`UPDATE dutys SET standort_id = ?, note = ? WHERE id = ?`, [standorte[0].id, duty.note + ' Grund: ' + (reasons.join(' · ') || 'offene Strafzeit'), duty.id]);
-    const grund = reasons.join(' · ') || 'offene Strafzeit';
+    await db.run(`UPDATE dutys SET standort_id = ?, note = ? WHERE id = ?`, [standorte[0].id, duty.note + ' Grund: ' + (reasons.join(' Â· ') || 'offene Strafzeit'), duty.id]);
+    const grund = reasons.join(' Â· ') || 'offene Strafzeit';
     await db.run(`INSERT INTO assignments (duty_id, user_id, kind, status, source, grund, assigned_by) VALUES (?, ?, 'haupt', 'bestaetigt', 'strafe', ?, ?)`,
       [duty.id, rec.user_id, grund, req.user.id]);
     existingSet.add(rec.user_id);
@@ -874,7 +1029,7 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req, res) => {
   const signup_close = parseInt(req.body.signup_close_minutes, 10);
   const staff_start = parseInt(req.body.staff_start_minutes, 10);
   const max_wishes = parseInt(req.body.max_duty_wishes, 10);
-  if (!(signup_close > 0)) return res.status(400).json({ error: 'Ungültiger Wert.' });
+  if (!(signup_close > 0)) return res.status(400).json({ error: 'UngÃ¼ltiger Wert.' });
   await db.run(`UPDATE settings SET value = ? WHERE key = 'signup_close_minutes'`, [String(signup_close)]);
   await db.run(`UPDATE settings SET value = ? WHERE key = 'staff_start_minutes'`, [String(staff_start || 0)]);
   await db.run(`UPDATE settings SET value = ? WHERE key = 'max_duty_wishes'`, [String(max_wishes > 0 && max_wishes <= 10 ? max_wishes : 5)]);
@@ -904,7 +1059,7 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
   const password = String(req.body.password || '');
   const role = ['busfahrer', 'senior', 'admin'].includes(req.body.role) ? req.body.role : 'busfahrer';
   const licenses = Array.isArray(req.body.licenses) ? [...new Set(req.body.licenses.map((x) => parseInt(x, 10)).filter((x) => x > 0))] : [];
-  if (!/^[a-z0-9_.-]{3,24}$/.test(username)) return res.status(400).json({ error: 'Benutzername: 3–24 Zeichen, nur a-z 0-9 _ . -' });
+  if (!/^[a-z0-9_.-]{3,24}$/.test(username)) return res.status(400).json({ error: 'Benutzername: 3â€“24 Zeichen, nur a-z 0-9 _ . -' });
   const exists = await db.get(`SELECT id FROM users WHERE LOWER(username) = ?`, [username]);
   if (exists) return res.status(400).json({ error: 'Der Benutzername ist bereits vergeben.' });
   const oneTime = password.length >= 6 ? password : crypto.randomBytes(3).toString('hex').toUpperCase() + '-' + String(Math.floor(1000 + Math.random() * 9000));
@@ -929,7 +1084,7 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (id === req.user.id) return res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht löschen.' });
+  if (id === req.user.id) return res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht lÃ¶schen.' });
   const u = await db.get(`SELECT id FROM users WHERE id = ?`, [id]);
   if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
   await db.run(`DELETE FROM users WHERE id = ?`, [id]);
@@ -992,13 +1147,13 @@ async function generateDienstplanForShift(shiftId) {
   if (!shift) return { error: 'Shift nicht gefunden.' };
   let linien = [];
   try { linien = JSON.parse(shift.linien || '[]'); } catch (e) { /* ignoriert */ }
-  if (!linien.length) return { error: 'Keine Linien ausgewählt.' };
+  if (!linien.length) return { error: 'Keine Linien ausgewÃ¤hlt.' };
   const startMin = fahrplan.toMinutes(shift.betrieb_von || shift.time_start);
   const endMin = fahrplan.toMinutes(shift.betrieb_bis || shift.time_end);
   if (startMin === null) return { error: 'Startzeit fehlt.' };
 
   const trips = fahrplan.expandShiftTrips(linien, shift.date, startMin, endMin);
-  if (!trips.length) return { error: 'Keine Fahrten im gewählten Zeitfenster.' };
+  if (!trips.length) return { error: 'Keine Fahrten im gewÃ¤hlten Zeitfenster.' };
   const dienste = fahrplan.buildDienstplan(trips);
 
   const linienRows = await db.all(`SELECT * FROM linien`);
@@ -1046,7 +1201,7 @@ async function generateDienstplanForShift(shiftId) {
   return { ok: true, generated: dienste.length, fahrten: trips.length };
 }
 
-/* Gibt alle Fahrten/Dienste-Vorschläge für eine Shift VOR dem Speichern zurück (Vorschau). */
+/* Gibt alle Fahrten/Dienste-VorschlÃ¤ge fÃ¼r eine Shift VOR dem Speichern zurÃ¼ck (Vorschau). */
 app.post('/api/preview/dienste', requireAuth, requireScheduler, async (req, res) => {
   const dateStr = String(req.body.date || '');
   const linien = Array.isArray(req.body.linien) ? req.body.linien.map((x) => String(x).trim()).filter(Boolean) : [];
@@ -1078,12 +1233,12 @@ app.post('/api/admin/shifts/:id/generate', requireAuth, requireScheduler, async 
   if (!shift) return res.status(400).json({ error: 'Shift nicht gefunden.' });
   const existing = await db.get(`SELECT COUNT(*) AS n FROM dutys WHERE shift_id = ?`, [id]);
   if (existing.n > 0 && req.query.replace !== '1') {
-    return res.status(400).json({ error: 'Für diese Shift gibt es bereits Dienste. Mit replace=1 werden sie neu erzeugt.' });
+    return res.status(400).json({ error: 'FÃ¼r diese Shift gibt es bereits Dienste. Mit replace=1 werden sie neu erzeugt.' });
   }
   const confirmed = await db.get(`
     SELECT COUNT(*) AS n FROM assignments a JOIN dutys d ON d.id = a.duty_id
     WHERE d.shift_id = ? AND a.status = 'bestaetigt'`, [id]);
-  if (confirmed.n > 0) return res.status(400).json({ error: 'Es gibt bereits bestätigte Zuordnungen – zuerst lösen.' });
+  if (confirmed.n > 0) return res.status(400).json({ error: 'Es gibt bereits bestÃ¤tigte Zuordnungen â€“ zuerst lÃ¶sen.' });
   await db.run(`DELETE FROM dutys WHERE shift_id = ?`, [id]);
   const r = await generateDienstplanForShift(id);
   if (r.error) return res.status(400).json({ error: r.error });
@@ -1108,7 +1263,7 @@ app.put('/api/admin/shifts/:id', requireAuth, requireAdmin, async (req, res) => 
 app.delete('/api/admin/shifts/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const activities = await db.get(`SELECT COUNT(*) AS n FROM activity a JOIN dutys d ON d.id = a.duty_id WHERE d.shift_id = ?`, [id]);
-  if (activities.n > 0) return res.status(400).json({ error: 'Zu dieser Shift gibt es schon Activity-Einträge – nicht löschbar.' });
+  if (activities.n > 0) return res.status(400).json({ error: 'Zu dieser Shift gibt es schon Activity-EintrÃ¤ge â€“ nicht lÃ¶schbar.' });
   await db.run(`DELETE FROM shifts WHERE id = ?`, [id]);
   res.json({ ok: true });
 });
@@ -1184,7 +1339,7 @@ app.put('/api/admin/dutys/:id', requireAuth, requireAdmin, async (req, res) => {
 app.delete('/api/admin/dutys/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const activities = await db.get(`SELECT COUNT(*) AS n FROM activity WHERE duty_id = ?`, [id]);
-  if (activities.n > 0) return res.status(400).json({ error: 'Zu diesem Dienst gibt es schon Activity-Einträge.' });
+  if (activities.n > 0) return res.status(400).json({ error: 'Zu diesem Dienst gibt es schon Activity-EintrÃ¤ge.' });
   await db.run(`DELETE FROM dutys WHERE id = ?`, [id]);
   res.json({ ok: true });
 });
@@ -1355,7 +1510,7 @@ db.init()
   .then(() => {
     const port = process.env.PORT || 3000;
     app.listen(port, () => {
-      console.log('VBG Verwalter läuft auf Port ' + port);
+      console.log('VBG Verwalter lÃ¤uft auf Port ' + port);
     });
   })
   .catch((e) => {

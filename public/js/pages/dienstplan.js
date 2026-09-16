@@ -9,26 +9,68 @@ const DienstplanPage = {
     return d.standort || 'Kundenservice Strafe';
   },
 
-  dutyRow(d, data, bySlot) {
+  linieLabel(l) {
+    const s = String(l || '');
+    return /^\d+$/.test(s) ? 'L' + s : s;
+  },
+
+  /* Einzelne Fahrt für die Übersicht (Zeit, Linie, Kurs, Richtung, Strecke) */
+  fahrtHtml(d, f, i, kursSeg) {
+    const prev = i > 0 ? (d.fahrten || [])[i - 1] : null;
+    const seg = kursSeg ? kursSeg(d, f) : null;
+    const wechsel = prev && String(prev.linie) !== String(f.linie)
+      ? `<div class="plan-wechsel">Linienwechsel ${this.linieLabel(prev.linie)} → ${this.linieLabel(f.linie)}</div>`
+      : '';
+    const kolort = f.color ? esc(f.color) : '#555';
+    return wechsel + `
+      <div class="plan-fahrt">
+        <span class="plan-fahrt-zeit">${f.start ? esc(fmtTime(f.start)) + '–' + esc(fmtTime(f.end)) : '–'}</span>
+        <span class="plan-fahrt-badge" style="--lc:${kolort}">${esc(this.linieLabel(f.linie))}</span>
+        <span class="plan-fahrt-kurs">Kurs ${esc(f.kurs)}${seg && seg.of > 1 ? `<span class="plan-seg" title="Kurs ${esc(f.linie)} · Abschnitt ${seg.part} von ${seg.of}">${seg.part}/${seg.of}</span>` : ''}</span>
+        <span class="plan-fahrt-richt ${String(f.richtung) === 'zurück' ? 'zurueck' : ''}" title="${esc(f.richtung)}">${String(f.richtung) === 'zurück' ? '←' : '→'}</span>
+        <span class="plan-fahrt-strecke"><span class="muted">${esc(f.von)}</span> → <span class="muted">${esc(f.nach)}</span></span>
+      </div>`;
+  },
+
+  /* Zusammenfassung eines bus-Dienstes: Umläufe + reine Fahrzeit */
+  summary(d) {
+    const list = d.fahrten || [];
+    if (!list.length) return '';
+    const umlaeufe = [];
+    const seen = new Set();
+    let fzMin = 0;
+    for (const f of list) {
+      if (f.start && f.end) {
+        const a = new Date(String(f.start).length === 16 ? f.start + ':00' : f.start);
+        const b = new Date(String(f.end).length === 16 ? f.end + ':00' : f.end);
+        if (!isNaN(a) && !isNaN(b) && b > a) fzMin += (b - a) / 60000;
+      }
+      const key = String(f.linie) + ':' + f.kurs;
+      if (!seen.has(key)) { seen.add(key); umlaeufe.push(this.linieLabel(f.linie) + ' · Kurs ' + f.kurs); }
+    }
+    return `${list.length} Fahrten · ${Math.round(fzMin)} min Fahrtzeit` + (umlaeufe.length ? ' · Umläufe: ' + umlaeufe.join(' ⟶ ') : '');
+  },
+
+  dutyRow(d, data, bySlot, kursSeg) {
     const haupt = bySlot[d.id + ':haupt'];
     const reserve = bySlot[d.id + ':reserve'];
     const canManage = data.canManage;
     const sig = (data.settings && data.settings.strafe_name) || 'Kundenservice Strafe';
-    const accent = d.type === 'wechsel' ? 'var(--warning)' : (d.type === 'strafe' ? 'var(--danger)' : 'var(--primary)');
+    const accent = d.color || (d.type === 'wechsel' ? 'var(--warning)' : (d.type === 'strafe' ? 'var(--danger)' : 'var(--primary)'));
     const eligible = (data.users || []).filter((u) => !d.license_id || (u.licenses || []).includes(d.license_id));
     const selected = haupt ? haupt.user_id : (reserve ? reserve.user_id : '');
 
     const label = d.type === 'bus'
-      ? '🚌 ' + (d.linie || 'Busdienst')
+      ? '🚌 <b>' + esc(this.linieLabel(d.linie)) + '</b>'
       : d.type === 'wechsel'
-        ? '🔄 Linienwechsel ' + d.wechsel_from_name + ' → ' + d.wechsel_to_name
+        ? '🔄 Linienwechsel ' + esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name)
         : '🛍️ ' + (d.standort || sig);
     const metaBits = [d.fahrzeug ? 'Fahrzeug ' + d.fahrzeug : '', d.license ? 'Lizenz ' + d.license : ''].filter(Boolean);
-    const fahrten = (d.fahrten || []).length
-      ? `<div class="plan-fahrten">${d.fahrten.map((f) => `
-          <div class="plan-fahrt"><span class="plan-fahrt-zeit">${esc(f.start ? fmtTime(f.start).slice(11, 16) : '')}–${esc(f.end ? fmtTime(f.end).slice(11, 16) : '')}</span>
-            <span class="plan-fahrt-linie">L${esc(f.linie)}</span> <b>Kurs ${esc(f.kurs)}</b>
-            <span class="muted">${esc(f.richtung)}</span> · ${esc(f.von)} → ${esc(f.nach)}</div>`).join('')}</div>`
+    const sum = d.type === 'bus' ? this.summary(d) : '';
+    if (sum) metaBits.push(sum);
+
+    const fahrten = d.type === 'bus' && (d.fahrten || []).length
+      ? `<div class="plan-fahrten-block">${d.fahrten.map((f, i) => this.fahrtHtml(d, f, i, kursSeg)).join('')}</div>`
       : (d.note ? `<div class="plan-desc-note">${esc(d.note)}</div>` : '');
 
     return `
@@ -37,7 +79,7 @@ const DienstplanPage = {
         <div class="plan-time">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</div>
         <div class="plan-main">
           <b>${label}</b>
-          <div class="plan-desc">${metaBits.join(' · ')}${fahrten ? '<br/>' + fahrten : ''}</div>
+          <div class="plan-desc">${metaBits.join(' · ')}</div>
         </div>
         <div class="plan-license">${d.license ? `<span class="badge badge-blue">${esc(d.license)}</span>` : ''}</div>
         <div class="plan-assign">
@@ -57,7 +99,8 @@ const DienstplanPage = {
               <button class="btn btn-danger btn-xs" data-unassign="${d.id}">Leeren</button>
             </div>` : ''}
         </div>
-      </div>`;
+      </div>
+      ${fahrten ? `<div class="plan-fahrten-wrap" data-trips-of="${d.id}">${fahrten}</div>` : ''}`;
   },
 
   async render(container) {
@@ -76,12 +119,13 @@ const DienstplanPage = {
     const canManage = data.canManage;
     const reserves = assignments.filter((a) => a.kind === 'reserve');
     const sig = (data.settings && data.settings.strafe_name) || 'Kundenservice Strafe';
+    const kursSeg = fahrtKursSegments(duties);
 
     const busDuties = duties.filter((d) => d.type !== 'strafe').sort((a, b) => (a.start || '').localeCompare(b.start || ''));
     const strafeDuties = duties.filter((d) => d.type === 'strafe').sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
     container.innerHTML = `
-      <div class="page-head"><h1>Dienstplan</h1><p>Der Schichtplan mit allen Diensten und Einteilungen.</p></div>
+      <div class="page-head"><h1>Dienstplan</h1><p>Der Schichtplan mit allen Diensten, einzelnen Fahrten und der Activity-Anmeldung.</p></div>
 
       <div class="panel">
         <div class="panel-head"><h2>Shift auswählen</h2></div>
@@ -94,6 +138,8 @@ const DienstplanPage = {
               </label>`).join('')}
           </div>` : '<div class="empty">Noch keine Shifts vorhanden.</div>'}
       </div>
+
+      ${data.shift ? `<div class="panel" id="activity-frame"></div>` : ''}
 
       ${data.shift ? `
         <div class="plan-sheet">
@@ -118,13 +164,13 @@ const DienstplanPage = {
 
           <div class="plan-section">
             <div class="plan-section-head">BUSDIENSTE <small>${busDuties.length} Dienste · ganztägige Abdeckung</small></div>
-            ${busDuties.length ? busDuties.map((d) => this.dutyRow(d, data, bySlot)).join('') : '<div class="empty">Keine Busdienste eingeplant.</div>'}
+            ${busDuties.length ? busDuties.map((d) => this.dutyRow(d, data, bySlot, kursSeg)).join('') : '<div class="empty">Keine Busdienste eingeplant.</div>'}
           </div>
 
           ${strafeDuties.length ? `
             <div class="plan-section">
               <div class="plan-section-head">${esc(sig.toUpperCase())} <small>${strafeDuties.length} Dienste · Standorte</small></div>
-              ${strafeDuties.map((d) => this.dutyRow(d, data, bySlot)).join('')}
+              ${strafeDuties.map((d) => this.dutyRow(d, data, bySlot, kursSeg)).join('')}
             </div>` : ''}
 
           <div class="plan-section">
@@ -162,6 +208,8 @@ const DienstplanPage = {
         location.hash = '#/dienstplan?shift=' + r.value + '&t=' + Date.now();
       });
     });
+
+    this.renderActivity(container);
 
     if (canManage) {
       const btnAuto = container.querySelector('#btn-autoshift');
@@ -206,6 +254,69 @@ const DienstplanPage = {
             App.reload();
           } catch (e) { App.toast(e.message, 'error'); }
         });
+      });
+    }
+  },
+
+  /* Activity-Frame: 60 %-Regel (nur reine Fahrzeit) + Anmelde-Button */
+  async renderActivity(container) {
+    const frame = container.querySelector('#activity-frame');
+    if (!frame || !this.state.shiftId) return;
+    let st;
+    try {
+      st = await API.get('/api/activity-status?shift_id=' + this.state.shiftId);
+    } catch (e) {
+      frame.innerHTML = '<div class="panel-head"><h2>Activity</h2></div><div class="empty">Status nicht abrufbar: ' + esc(e.message) + '</div>';
+      return;
+    }
+
+    const inner = () => {
+      if (!st.ok || st.noDuty) {
+        return `
+          <div class="panel-head"><h2>Activity</h2></div>
+          <div class="activity-body">
+            <p class="muted">Nach <b>60 % deiner reinen Fahrtzeit</b> (Fahrzeiten von–bis, ohne Standzeiten) kannst du dich für die Activity anmelden.</p>
+            <div class="empty">Kein eigener bestätigter Haupt-Dienst in dieser Shift – hier erscheint dein Fortschritt.</div>
+          </div>`;
+      }
+      const tij = st.duty;
+      const dr = st.driving;
+      const unlockStr = dr.atIso ? new Date(dr.atIso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
+      const tripName = dr.atTrip
+        ? (String(dr.atTrip.linie).match(/^\d+$/) ? 'L' + dr.atTrip.linie : dr.atTrip.linie) + ' Kurs ' + dr.atTrip.kurs + ' (' + String(dr.atTrip.richtung === 'zurück' ? '←' : '→') + ' ' + dr.atTrip.von + ' → ' + dr.atTrip.nach + ')'
+        : '';
+      return `
+        <div class="panel-head"><h2>Activity</h2>
+          <span class="muted-sm">Dienst ${esc(tij.code)} · ${tij.start ? esc(fmtTime(tij.start)) + ' – ' + esc(fmtTime(tij.end)) : ''}</span>
+        </div>
+        <div class="activity-body">
+          <p class="muted">Nach <b>60 % deiner reinen Fahrtzeit</b> (nur Fahrzeiten, keine Standzeiten) kannst du dich für die Activity anmelden.</p>
+          ${tij.anzahl_fahrten === 0 ? '<div class="empty">Dieser Dienst hat keine Fahrtenliste – bitte Dienste neu generieren.</div>' : `
+            <div class="activity-progress">
+              <div class="progress"><div class="progress-bar" style="width:${Number(dr.pct) || 0}%"></div></div>
+              <div class="progress-label">Reine Fahrzeit: <b>${dr.doneMin} / ${dr.totalMin} min</b> (${dr.pct} %)${dr.reached ? ' · <b class="ok">60 % erreicht!</b>' : ''}</div>
+            </div>
+            <div class="activity-actions">
+              ${st.signed
+                ? '<div><span class="badge badge-green">Für die Activity angemeldet</span></div>'
+                : dr.reached
+                  ? '<button class="btn btn-primary" id="act-sign">Für Activity anmelden</button>'
+                  : `<button class="btn btn-primary" id="act-sign" disabled>Für Activity anmelden</button>
+                     <div class="muted act-lock"><span class="lock">🔒</span> Freigabe ab <b>${esc(unlockStr)}</b>${tripName ? '<br/>bei Fahrt <b>' + esc(tripName) + '</b>' : ''}</div>`}
+            </div>`}
+        </div>`;
+    };
+
+    frame.innerHTML = inner();
+
+    const btn = frame.querySelector('#act-sign');
+    if (btn && !btn.disabled && st.duty) {
+      btn.addEventListener('click', async () => {
+        try {
+          await API.post('/api/activity/sign', { duty_id: st.duty.id });
+          App.toast('Für die Activity angemeldet.');
+          App.reload();
+        } catch (e) { App.toast(e.message, 'error'); }
       });
     }
   }

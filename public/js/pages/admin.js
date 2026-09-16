@@ -7,6 +7,7 @@ const AdminPage = {
     ['users', 'Nutzer'],
     ['shifts', 'Shifts'],
     ['dienste', 'Dienste'],
+    ['activity', 'Activity'],
     ['linien', 'Linien'],
     ['standorte', 'Standorte'],
     ['fahrzeuge', 'Fahrzeugplan'],
@@ -36,6 +37,7 @@ const AdminPage = {
       if (this.sub === 'users') return await this.usersView(body);
       if (this.sub === 'shifts') return await this.shiftsView(body);
       if (this.sub === 'dienste') return await this.diensteView(body);
+      if (this.sub === 'activity') return await this.activityAllView(body);
       if (this.sub === 'linien') return await this.linienView(body);
       if (this.sub === 'standorte') return await this.standorteView(body);
       if (this.sub === 'fahrzeuge') return await this.fahrzeugeView(body);
@@ -336,6 +338,7 @@ const AdminPage = {
     const persistedShift = parseInt(localStorage.getItem('vbg_admin_shift') || '0', 10);
     const currentShift = shifts.find((s) => s.id === persistedShift) || shifts[0];
     const filtered = currentShift ? (data.duties || []).filter((d) => d.shift_id === currentShift.id) : [];
+    const kursSeg = fahrtKursSegments(filtered);
 
     body.innerHTML = `
       <div class="panel">
@@ -394,8 +397,10 @@ const AdminPage = {
                     <td>${esc(VBG.dutyTypes[d.type] || d.type)}</td>
                     <td class="muted-sm">
                       ${d.type === 'bus' ? esc(d.linie || '–') : d.type === 'wechsel' ? esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name) : esc(d.standort || '–')}
-                      ${d.type === 'bus' && (d.fahrten || []).length ? `<div class="trip-list">${d.fahrten.map((f) => `
-                        <div class="trip-mini"><span class="trip-time">${esc(fmtTime(f.start))}–${esc(fmtTime(f.end))}</span> L${esc(f.linie)} Kurs ${esc(f.kurs)} ${esc(f.richtung)} · ${esc(f.von)} → ${esc(f.nach)}</div>`).join('')}</div>` : ''}
+                      ${d.type === 'bus' && (d.fahrten || []).length ? `<div class="trip-list">${d.fahrten.map((f) => {
+                        const seg = kursSeg(d, f);
+                        return `<div class="trip-mini"><span class="trip-time">${esc(fmtTime(f.start))}–${esc(fmtTime(f.end))}</span> <span class="plan-fahrt-badge" style="--lc:${f.color ? esc(f.color) : '#555'}">${esc(/^\d+$/.test(String(f.linie || '')) ? 'L' + f.linie : f.linie)}</span> Kurs ${esc(f.kurs)}${seg && seg.of > 1 ? ' <span class="plan-seg">' + seg.part + '/' + seg.of + '</span>' : ''} ${String(f.richtung) === 'zurück' ? '←' : '→'} · ${esc(f.von)} → ${esc(f.nach)}</div>`;
+                      }).join('')}</div>` : ''}
                     </td>
                     <td class="num">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</td>
                     <td>${esc(d.fahrzeug || '–')}</td>
@@ -538,6 +543,112 @@ const AdminPage = {
           await API.del('/api/admin/dutys/' + b.dataset.deldut);
           App.reload();
         } catch (err) { App.toast(err.message, 'error'); }
+      });
+    });
+  },
+
+  /* ------------------------------ ACTIVITY (Admin) ------------------------------ */
+  async activityAllView(body) {
+    const data = await API.get('/api/admin/activity-all');
+    const shifts = data.shifts || [];
+    const allItems = data.items || [];
+    const perShift = data.perShift || [];
+    const totals = data.totals || {};
+
+    const fShift = parseInt(localStorage.getItem('vbg_admin_act_shift') || '0', 10) || 0;
+    const fUser = parseInt(localStorage.getItem('vbg_admin_act_user') || '0', 10) || 0;
+    const items = allItems.filter((i) => (!fShift || i.shift_id === fShift) && (!fUser || i.user_id === fUser));
+    const userIds = [...new Set(allItems.map((i) => i.user_id))];
+
+    body.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat ${totals.teil ? 'good' : ''}"><div class="stat-value">${totals.teil}</div><div class="stat-label">Teilgenommen</div></div>
+        <div class="stat ${totals.fehlt ? 'bad' : ''}"><div class="stat-value">${totals.fehlt}</div><div class="stat-label">Fehlt</div></div>
+        <div class="stat"><div class="stat-value">${totals.offen}</div><div class="stat-label">Noch offen</div></div>
+        <div class="stat ${totals.quote >= 80 ? 'good' : ''}"><div class="stat-value">${totals.quote} %</div><div class="stat-label">Gesamt-Teilnahmequote</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Statistik pro Shift</h2><span class="muted-sm">${totals.gesamt || 0} bestätigte Einteilungen gesamt</span></div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Shift</th><th>Datum</th><th>Eingeteilt</th><th>Teilgenommen</th><th>Fehlt</th><th>Offen</th><th>Quote</th></tr></thead>
+            <tbody>
+              ${perShift.length ? perShift.map((p) => `<tr>
+                <td><b>${esc(p.title)}</b></td>
+                <td class="muted-sm">${esc(fmtDate(p.date))}</td>
+                <td class="num">${p.gesamt}</td>
+                <td class="num good-c">${p.teil}</td>
+                <td class="num bad-c">${p.fehlt}</td>
+                <td class="num">${p.offen}</td>
+                <td><span class="badge ${p.quote >= 80 ? 'badge-green' : p.quote > 0 ? 'badge-amber' : 'badge-gray'}">${p.quote} %</span></td>
+              </tr>`).join('') : '<tr><td colspan="7" class="muted">Noch keine bestätigten Einteilungen.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Activity aller Personen</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="input" id="act-fshift" style="max-width:240px">
+              <option value="0">Alle Shifts</option>
+              ${shifts.map((s) => `<option value="${s.id}" ${fShift === s.id ? 'selected' : ''}>${esc(s.title)} · ${esc(s.date)}</option>`).join('')}
+            </select>
+            <select class="input" id="act-fuser" style="max-width:240px">
+              <option value="0">Alle Personen</option>
+              ${userIds.map((uid) => { const u = allItems.find((i) => i.user_id === uid); return `<option value="${uid}" ${fUser === uid ? 'selected' : ''}>${esc((u && (u.display_name || u.username)) || uid)}</option>`; }).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Fahrer</th><th>Shift</th><th>Dienst</th><th>Zeit</th><th>Status</th><th>Notiz</th><th></th></tr></thead>
+            <tbody>
+              ${items.length ? items.map((it) => `
+                <tr data-aid="${it.assignment_id}" data-duty="${it.duty_id}" data-uid="${it.user_id}">
+                  <td><b>${esc(it.display_name || it.username)}</b></td>
+                  <td class="muted-sm">${esc(it.shift_title)}<br/><span class="muted">${esc(fmtDate(it.shift_date))}</span></td>
+                  <td><b>${esc(it.duty_code)}</b></td>
+                  <td class="num muted-sm">${it.duty_start ? esc(fmtTime(it.duty_start)) + ' – ' + esc(fmtTime(it.duty_end)) : '–'}</td>
+                  <td>${it.activity_result === 'teilgenommen' ? '<span class="badge badge-green">Teilgenommen</span>'
+                    : it.activity_result === 'nicht_teilgenommen' ? '<span class="badge badge-red">Fehlt</span>'
+                    : '<span class="badge badge-gray">Noch nicht erfasst</span>'}${it.activity_at ? `<div class="muted" style="font-size:.7rem">${esc(fmtDateTime(it.activity_at))}</div>` : ''}</td>
+                  <td><input class="input" data-note="${it.assignment_id}" value="${esc(it.activity_note || '')}" placeholder="Notiz" style="min-width:120px;padding:5px 8px;font-size:.8rem"/></td>
+                  <td style="white-space:nowrap">
+                    <button class="btn btn-soft btn-xs" data-result="teilgenommen">Teilgenommen</button>
+                    <button class="btn btn-danger btn-xs" data-result="nicht_teilgenommen">Fehlt</button>
+                  </td>
+                </tr>`).join('') : '<tr><td colspan="7" class="muted">Keine Einträge für diesen Filter.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    body.querySelector('#act-fshift').addEventListener('change', (e) => {
+      localStorage.setItem('vbg_admin_act_shift', String(e.target.value));
+      App.reload();
+    });
+    body.querySelector('#act-fuser').addEventListener('change', (e) => {
+      localStorage.setItem('vbg_admin_act_user', String(e.target.value));
+      App.reload();
+    });
+    body.querySelectorAll('[data-result]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const tr = b.closest('tr');
+        const payload = {
+          assignment_id: parseInt(tr.dataset.aid, 10),
+          duty_id: parseInt(tr.dataset.duty, 10),
+          user_id: parseInt(tr.dataset.uid, 10),
+          result: b.dataset.result,
+          note: ((tr.querySelector('[data-note]') || {}).value || '').trim()
+        };
+        try {
+          await API.post('/api/admin/activity', payload);
+          App.toast(b.dataset.result === 'teilgenommen' ? 'Als teilgenommen markiert.' : 'Als fehlend markiert.');
+          App.reload();
+        } catch (e) { App.toast(e.message, 'error'); }
       });
     });
   },

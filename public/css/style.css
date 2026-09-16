@@ -379,14 +379,51 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 .plan-assign .unbesetzt { color: var(--text-muted); font-style: italic; font-size: .82rem; }
 .plan-reserve { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
 .plan-assign-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
-.plan-fahrten { margin-top: 6px; display: grid; gap: 2px; max-width: 640px; }
-.plan-fahrt { display: flex; align-items: center; gap: 8px; font-size: .76rem; line-height: 1.45; }
-.plan-fahrt-zeit { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text-strong); min-width: 86px; white-space: nowrap; }
-.plan-fahrt-linie { display: inline-block; min-width: 26px; text-align: center; background: var(--bg-soft); border-radius: 4px; padding: 0 4px; font-weight: 800; white-space: nowrap; }
+
+/* Fahrten-Tabelle unter dem Dienst-Kopf */
+.plan-fahrten-wrap { border-top: 1px dashed var(--border); background: var(--bg-soft); padding: 8px 20px 12px; }
+.plan-fahrten-block { display: grid; grid-template-columns: 118px 64px 116px 40px 1fr; gap: 2px 12px; max-width: 920px; }
+.plan-fahrt { display: contents; color: var(--text); }
+.plan-fahrt-zeit { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .76rem; white-space: nowrap; }
+.plan-fahrt-badge { justify-self: start; background: var(--lc, #555); color: #fff; font-weight: 800; font-size: .68rem; padding: 1px 8px; border-radius: 20px; white-space: nowrap; letter-spacing: .5px; }
+.plan-fahrt-kurs { font-size: .76rem; font-weight: 800; white-space: nowrap; }
+.plan-seg { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: .6rem; font-weight: 800; padding: 0 6px; margin-left: 3px; color: var(--text-muted); vertical-align: 1px; }
+.plan-fahrt-richt { font-size: .74rem; font-weight: 800; color: var(--primary); }
+.plan-fahrt-richt.zurueck { color: var(--text-muted); }
+.plan-fahrt-strecke { font-size: .76rem; }
+.plan-wechsel { grid-column: 1 / -1; font-size: .68rem; font-weight: 800; color: var(--warning); text-transform: uppercase; letter-spacing: .4px; margin: 5px 0 1px; }
+.plan-wechsel::before { content: '⇄  '; }
 .plan-desc-note { white-space: pre-wrap; }
-.trip-list { margin-top: 4px; display: grid; gap: 1px; }
-.trip-mini { font-size: .74rem; color: var(--text-muted); line-height: 1.5; white-space: nowrap; }
-.trip-mini .trip-time { font-weight: 700; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+
+/* Admin: kompakte Fahrtliste */
+.trip-list { margin-top: 4px; display: grid; gap: 2px; }
+.trip-mini { font-size: .74rem; color: var(--text-muted); line-height: 1.7; white-space: nowrap; }
+.trip-mini .trip-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Activity-Frame (Dienstplan) + Admin-Statistik */
+.activity-body { padding: 4px 20px 16px; display: grid; gap: 10px; }
+.activity-progress { display: grid; gap: 6px; max-width: 620px; }
+.progress { height: 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.progress-bar { height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); transition: width .3s; }
+.progress-label { font-size: .8rem; color: var(--text-muted); }
+.progress-label .ok { color: var(--primary); font-weight: 700; }
+.activity-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.act-lock { font-size: .78rem; color: var(--text-muted); }
+.act-lock .lock { margin-right: 4px; }
+.good-c { color: var(--primary); font-weight: 700; }
+.bad-c { color: var(--danger); font-weight: 700; }
+
+/* Meine Dienste */
+.mine-fahrten summary { cursor: pointer; font-size: .74rem; color: var(--primary); font-weight: 700; }
+.mine-trips { display: grid; grid-template-columns: 118px 64px 116px 1fr; gap: 2px 12px; padding-top: 8px; max-width: 760px; }
+.mine-trip { display: contents; color: var(--text); }
+
+@media (max-width: 700px) {
+  .plan-fahrten-block, .mine-trips { display: block; }
+  .plan-fahrt, .mine-trip { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 1px 0; }
+  .plan-fahrt-richt { display: none; }
+  .plan-fahrt-strecke { flex: 1 1 100%; order: 5; }
+}
 .type-bus { color: var(--primary); }
 @media (max-width: 900px) {
   .plan-row { grid-template-columns: 100px 1fr; }
