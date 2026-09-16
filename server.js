@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
+const fahrplan = require('./fahrplan');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -222,10 +223,16 @@ app.get('/api/images', (req, res) => {
 
 function shiftRow(r) {
   if (!r) return null;
+  let linien = [];
+  try { linien = r.linien ? JSON.parse(r.linien) : []; } catch (e) { /* ignoriert */ }
   return {
     id: r.id, title: r.title, description: r.description, date: r.date,
     time_start: r.time_start, time_end: r.time_end,
-    host_id: r.host_id, host: r.host || '', status: r.status, created_at: r.created_at
+    host_id: r.host_id, host: r.host || '', status: r.status, created_at: r.created_at,
+    linien,
+    auto_dienste: !!r.auto_dienste,
+    betrieb_von: r.betrieb_von || '',
+    betrieb_bis: r.betrieb_bis || ''
   };
 }
 
@@ -926,14 +933,21 @@ app.post('/api/admin/users/:id/reset-password', requireAuth, requireAdmin, async
 /* -------------------------------- Admin Shifts -------------------------------- */
 
 function parseShiftBody(b) {
+  const linien = Array.isArray(b.linien)
+    ? b.linien.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 8)
+    : [];
   return {
     title: String(b.title || '').trim().slice(0, 80),
-    description: String(b.description || '').trim().slice(0, 500),
+    description: String(b.description || '').trim().slice(0, 2000),
     date: String(b.date || ''),
     time_start: String(b.time_start || ''),
     time_end: String(b.time_end || ''),
     host_id: parseInt(b.host_id || '0', 10) || null,
-    status: b.status === 'published' ? 'published' : 'draft'
+    status: b.status === 'published' ? 'published' : 'draft',
+    linien,
+    auto_dienste: (b.auto_generate || b.auto_dienste) ? 1 : 0,
+    betrieb_von: String(b.betrieb_von || '').slice(0, 5),
+    betrieb_bis: String(b.betrieb_bis || '').slice(0, 5)
   };
 }
 
@@ -947,9 +961,109 @@ app.get('/api/admin/shifts', requireAuth, requireAdmin, async (req, res) => {
 app.post('/api/admin/shifts', requireAuth, requireAdmin, async (req, res) => {
   const b = parseShiftBody(req.body);
   if (!b.title || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) return res.status(400).json({ error: 'Titel und Datum angeben.' });
-  const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.title, b.description, b.date, b.time_start, b.time_end, b.host_id, b.status, req.user.id]);
-  res.json({ ok: true, id: res2.lastRowId });
+  const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, linien, auto_dienste, betrieb_von, betrieb_bis, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.title, b.description, b.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(b.linien), b.auto_dienste, b.betrieb_von, b.betrieb_bis, req.user.id]);
+  let generated = 0;
+  if (b.auto_dienste && b.linien.length) {
+    const r = await generateDienstplanForShift(res2.lastRowId);
+    generated = (r && r.generated) || 0;
+  }
+  res.json({ ok: true, id: res2.lastRowId, generated });
+});
+
+async function generateDienstplanForShift(shiftId) {
+  const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [shiftId]);
+  if (!shift) return { error: 'Shift nicht gefunden.' };
+  let linien = [];
+  try { linien = JSON.parse(shift.linien || '[]'); } catch (e) { /* ignoriert */ }
+  if (!linien.length) return { error: 'Keine Linien ausgewählt.' };
+  const startMin = fahrplan.toMinutes(shift.betrieb_von || shift.time_start);
+  const endMin = fahrplan.toMinutes(shift.betrieb_bis || shift.time_end);
+  if (startMin === null) return { error: 'Startzeit fehlt.' };
+
+  const trips = fahrplan.expandShiftTrips(linien, shift.date, startMin, endMin);
+  if (!trips.length) return { error: 'Keine Fahrten im gewählten Zeitfenster.' };
+  const dienste = fahrplan.buildDienstplan(trips);
+
+  const linienRows = await db.all(`SELECT * FROM linien`);
+  const shortToId = new Map(linienRows.map((l) => [String(l.short || '').toLowerCase(), l.id]));
+  const fahrzeuge = await db.all(`SELECT * FROM fahrzeuge WHERE status = 'einsatzbereit' ORDER BY sort`);
+  const used = new Set();
+
+  const dateForMin = (absMin) => {
+    const min = absMin % 1440;
+    const dayShift = Math.floor(absMin / 1440);
+    const d = new Date(shift.date + 'T00:00');
+    d.setDate(d.getDate() + dayShift);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const da = String(d.getDate()).padStart(2, '0');
+    return y + '-' + mo + '-' + da + 'T' + String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+  };
+
+  const pickFahrzeug = (lineShort) => {
+    const wantTyp = (fahrplan.getLine(lineShort) || {}).fahrzeugtyp || '';
+    const wantTypes = wantTyp === 'gelenk' ? ['gelenk', 'beide'] : wantTyp === 'solo' ? ['solo', 'beide'] : ['gelenk', 'solo', 'beide'];
+    const pool = fahrzeuge.filter((f) => !used.has(f.wagennummer) && wantTypes.some((t) => f.typ === t || f.typ === 'gelenk/solo'));
+    const pick = pool[0] || fahrzeuge.filter((f) => !used.has(f.wagennummer))[0];
+    if (pick) used.add(pick.wagennummer);
+    return pick ? pick.wagennummer : '';
+  };
+
+  await db.transaction(async (t) => {
+    for (let i = 0; i < dienste.length; i++) {
+      const d = dienste[i];
+      const linieId = shortToId.get(String(d.linie || '').toLowerCase());
+      await t.run(`INSERT INTO dutys (shift_id, code, type, linie_id, fahrzeug, start, end, license_id, note, sort) VALUES (?, ?, 'bus', ?, ?, ?, ?, ?, ?, ?)`,
+        [shiftId, d.code, linieId || null, pickFahrzeug(d.linie), dateForMin(d.startAbs), dateForMin(d.endAbs), linieId || null, d.note, i]);
+    }
+  });
+
+  return { ok: true, generated: dienste.length, fahrten: trips.length };
+}
+
+/* Gibt alle Fahrten/Dienste-Vorschläge für eine Shift VOR dem Speichern zurück (Vorschau). */
+app.post('/api/preview/dienste', requireAuth, requireScheduler, async (req, res) => {
+  const dateStr = String(req.body.date || '');
+  const linien = Array.isArray(req.body.linien) ? req.body.linien.map((x) => String(x).trim()).filter(Boolean) : [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !linien.length) return res.json({ dienste: [], fahrten: 0 });
+  const startMin = fahrplan.toMinutes(req.body.betrieb_von || req.body.time_start);
+  const endMin = fahrplan.toMinutes(req.body.betrieb_bis || req.body.time_end);
+  if (startMin === null) return res.json({ dienste: [], fahrten: 0 });
+  const trips = fahrplan.expandShiftTrips(linien, dateStr, startMin, endMin);
+  const dienste = fahrplan.buildDienstplan(trips);
+  res.json({ dienste, fahrten: trips.length });
+});
+
+app.post('/api/admin/shifts/:id/generate-preview', requireAuth, requireScheduler, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [id]);
+  if (!shift) return res.status(400).json({ error: 'Shift nicht gefunden.' });
+  const startMin = fahrplan.toMinutes(req.body.betrieb_von || shift.betrieb_von || shift.time_start);
+  const endMin = fahrplan.toMinutes(req.body.betrieb_bis || shift.betrieb_bis || shift.time_end);
+  const linien = Array.isArray(req.body.linien) ? req.body.linien.map((x) => String(x).trim()).filter(Boolean) : (() => { try { return JSON.parse(shift.linien || '[]'); } catch (e) { return []; } })();
+  if (startMin === null || !linien.length) return res.json({ dienste: [], fahrten: 0 });
+  const trips = fahrplan.expandShiftTrips(linien, shift.date, startMin, endMin);
+  const dienste = fahrplan.buildDienstplan(trips);
+  res.json({ dienste, fahrten: trips.length });
+});
+
+app.post('/api/admin/shifts/:id/generate', requireAuth, requireScheduler, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [id]);
+  if (!shift) return res.status(400).json({ error: 'Shift nicht gefunden.' });
+  const existing = await db.get(`SELECT COUNT(*) AS n FROM dutys WHERE shift_id = ?`, [id]);
+  if (existing.n > 0 && req.query.replace !== '1') {
+    return res.status(400).json({ error: 'Für diese Shift gibt es bereits Dienste. Mit replace=1 werden sie neu erzeugt.' });
+  }
+  const confirmed = await db.get(`
+    SELECT COUNT(*) AS n FROM assignments a JOIN dutys d ON d.id = a.duty_id
+    WHERE d.shift_id = ? AND a.status = 'bestaetigt'`, [id]);
+  if (confirmed.n > 0) return res.status(400).json({ error: 'Es gibt bereits bestätigte Zuordnungen – zuerst lösen.' });
+  await db.run(`DELETE FROM dutys WHERE shift_id = ?`, [id]);
+  const r = await generateDienstplanForShift(id);
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json({ ok: true, generated: r.generated, fahrten: r.fahrten });
 });
 
 app.put('/api/admin/shifts/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -957,8 +1071,13 @@ app.put('/api/admin/shifts/:id', requireAuth, requireAdmin, async (req, res) => 
   const b = parseShiftBody(req.body);
   const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [id]);
   if (!shift) return res.status(400).json({ error: 'Shift nicht gefunden.' });
-  await db.run(`UPDATE shifts SET title = ?, description = ?, date = ?, time_start = ?, time_end = ?, host_id = ?, status = ? WHERE id = ?`,
-    [b.title || shift.title, b.description, b.date || shift.date, b.time_start, b.time_end, b.host_id, b.status, id]);
+  const prevLinien = (() => { try { return JSON.parse(shift.linien || '[]'); } catch (e) { return []; } })();
+  const linienOut = b.linien.length ? b.linien : prevLinien;
+  const autoOut = b.linien.length ? b.auto_dienste : shift.auto_dienste;
+  const bvonOut = req.body.betrieb_von !== undefined ? b.betrieb_von : (shift.betrieb_von || '');
+  const bbisOut = req.body.betrieb_bis !== undefined ? b.betrieb_bis : (shift.betrieb_bis || '');
+  await db.run(`UPDATE shifts SET title = ?, description = ?, date = ?, time_start = ?, time_end = ?, host_id = ?, status = ?, linien = ?, auto_dienste = ?, betrieb_von = ?, betrieb_bis = ? WHERE id = ?`,
+    [b.title || shift.title, b.description, b.date || shift.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(linienOut), autoOut, bvonOut, bbisOut, id]);
   res.json({ ok: true });
 });
 
@@ -1100,6 +1219,63 @@ app.delete('/api/admin/standorte/:id', requireAuth, requireAdmin, async (req, re
   const used = await db.get(`SELECT COUNT(*) AS n FROM dutys WHERE standort_id = ?`, [id]);
   if (used.n > 0) return res.status(400).json({ error: 'Der Standort wird noch von Diensten verwendet.' });
   await db.run(`DELETE FROM standorte WHERE id = ?`, [id]);
+  res.json({ ok: true });
+});
+
+/* ---------------------------------- Fahrzeuge ---------------------------------- */
+
+function fahrzeugRow(r) {
+  return {
+    id: r.id, wagennummer: r.wagennummer, kennzeichen: r.kennzeichen || '',
+    typ: r.typ || 'solo', modell: r.modell || '',
+    bestand_seit: r.bestand_seit || '', bestand_bis: r.bestand_bis || '',
+    status: r.status || 'einsatzbereit', bemerkung: r.bemerkung || '', sort: r.sort || 0
+  };
+}
+
+app.get('/api/fahrzeuge', async (req, res) => {
+  const rows = await db.all(`SELECT * FROM fahrzeuge ORDER BY sort, wagennummer`);
+  res.json({ fahrzeuge: rows.map(fahrzeugRow) });
+});
+
+app.get('/api/admin/fahrzeuge', requireAuth, requireAdmin, async (req, res) => {
+  const rows = await db.all(`SELECT * FROM fahrzeuge ORDER BY sort, wagennummer`);
+  res.json({ fahrzeuge: rows.map(fahrzeugRow) });
+});
+
+app.post('/api/admin/fahrzeuge', requireAuth, requireAdmin, async (req, res) => {
+  const wagennummer = String(req.body.wagennummer || '').trim().slice(0, 20);
+  if (!wagennummer) return res.status(400).json({ error: 'Wagennummer angeben.' });
+  const sortRes = await db.get(`SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM fahrzeuge`);
+  const res2 = await db.run(`INSERT INTO fahrzeuge (wagennummer, kennzeichen, typ, modell, bestand_seit, bestand_bis, status, bemerkung, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [wagennummer, String(req.body.kennzeichen || '').slice(0, 20), String(req.body.typ || 'solo').slice(0, 20),
+     String(req.body.modell || '').slice(0, 60), String(req.body.bestand_seit || '').slice(0, 10),
+     String(req.body.bestand_bis || '').slice(0, 10), String(req.body.status || 'einsatzbereit').slice(0, 30),
+     String(req.body.bemerkung || '').slice(0, 300), sortRes.n]);
+  res.json({ ok: true, id: res2.lastRowId });
+});
+
+app.put('/api/admin/fahrzeuge/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const fz = await db.get(`SELECT * FROM fahrzeuge WHERE id = ?`, [id]);
+  if (!fz) return res.status(400).json({ error: 'Fahrzeug nicht gefunden.' });
+  const wagennummer = String(req.body.wagennummer ?? fz.wagennummer ?? '').trim().slice(0, 20);
+  if (!wagennummer) return res.status(400).json({ error: 'Wagennummer angeben.' });
+  await db.run(`UPDATE fahrzeuge SET wagennummer = ?, kennzeichen = ?, typ = ?, modell = ?, bestand_seit = ?, bestand_bis = ?, status = ?, bemerkung = ? WHERE id = ?`,
+    [wagennummer, String(req.body.kennzeichen ?? fz.kennzeichen ?? '').slice(0, 20),
+     String(req.body.typ ?? fz.typ ?? 'solo').slice(0, 20), String(req.body.modell ?? fz.modell ?? '').slice(0, 60),
+     String(req.body.bestand_seit ?? fz.bestand_seit ?? '').slice(0, 10), String(req.body.bestand_bis ?? fz.bestand_bis ?? '').slice(0, 10),
+     String(req.body.status ?? fz.status ?? 'einsatzbereit').slice(0, 30), String(req.body.bemerkung ?? fz.bemerkung ?? '').slice(0, 300), id]);
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/fahrzeuge/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const fz = await db.get(`SELECT * FROM fahrzeuge WHERE id = ?`, [id]);
+  if (!fz) return res.status(400).json({ error: 'Fahrzeug nicht gefunden.' });
+  const used = await db.get(`SELECT COUNT(*) AS n FROM dutys WHERE fahrzeug = ?`, [fz.wagennummer]);
+  if (used.n > 0) return res.status(400).json({ error: 'Das Fahrzeug wird noch von Diensten verwendet.' });
+  await db.run(`DELETE FROM fahrzeuge WHERE id = ?`, [id]);
   res.json({ ok: true });
 });
 

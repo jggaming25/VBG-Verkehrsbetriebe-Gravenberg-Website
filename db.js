@@ -1,4 +1,6 @@
 const { createClient } = require('@libsql/client');
+const path = require('path');
+const fs = require('fs');
 
 const url = process.env.TURSO_URL || 'file:local.db';
 const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
@@ -42,6 +44,18 @@ async function transaction(work) {
 async function tableInfo(table) {
   const res = await client.execute(`PRAGMA table_info(${table})`);
   return res.rows;
+}
+
+async function addColumn(table, column, def) {
+  const cols = await tableInfo(table);
+  if (!cols.some((c) => c.name === column)) {
+    try {
+      await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      console.log(`[migration] Spalte ${table}.${column} hinzugefügt`);
+    } catch (e) {
+      console.log(`[migration] Spalte ${table}.${column} ignorieren: ${e.message}`);
+    }
+  }
 }
 
 const DROP_TABLES = [
@@ -105,6 +119,28 @@ async function initOnce() {
     )
   `);
 
+  await addColumn('linien', 'farbe', 'TEXT');
+  await addColumn('linien', 'fahrzeugtyp', 'TEXT');
+  await addColumn('linien', 'betrieb_von_wd', 'INTEGER');
+  await addColumn('linien', 'betrieb_bis_wd', 'INTEGER');
+  await addColumn('linien', 'betrieb_von_we', 'INTEGER');
+  await addColumn('linien', 'betrieb_bis_we', 'INTEGER');
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS fahrzeuge (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wagennummer TEXT,
+      kennzeichen TEXT,
+      typ TEXT NOT NULL DEFAULT 'solo',
+      modell TEXT,
+      bestand_seit TEXT,
+      bestand_bis TEXT,
+      status TEXT NOT NULL DEFAULT 'einsatzbereit',
+      bemerkung TEXT,
+      sort INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS standorte (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +164,11 @@ async function initOnce() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  await addColumn('shifts', 'linien', 'TEXT');
+  await addColumn('shifts', 'auto_dienste', 'INTEGER');
+  await addColumn('shifts', 'betrieb_von', 'TEXT');
+  await addColumn('shifts', 'betrieb_bis', 'TEXT');
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS dutys (
@@ -249,10 +290,10 @@ async function initOnce() {
   const linienCount = await get(`SELECT COUNT(*) AS n FROM linien`);
   if (!linienCount || linienCount.n === 0) {
     const seedLines = [
-      ['Linie 19', '19', 1],
-      ['SB27', 'SB27', 2],
-      ['Linie 8', '8', 3],
-      ['N1', 'N1', 4]
+      ['Linie 19 · Stümp – Neuenburg – Gravenberg', '19', 1],
+      ['Linie 24 · Sorenkoppel – Neuenburg – Gravenberg', '24', 2],
+      ['Linie 8 · Gravenberg – Bergdorf', '8', 3],
+      ['N1 · Gravenberg – Sorenkoppel (Nachtbus)', 'N1', 4]
     ];
     for (const l of seedLines) {
       await client.execute(`INSERT INTO linien (name, short, active, sort) VALUES (?, ?, 1, ?)`, l);
@@ -277,6 +318,76 @@ async function initOnce() {
     );
     console.log('[seed] Admin erstellt: Benutzername=' + username + ' Einmal-Passwort=' + oneTime + ' (bitte beim ersten Login ändern)');
   }
+
+  try {
+    await syncFahrplanFromJson();
+  } catch (e) {
+    console.log('[migration] Fahrplan-Sync übersprungen: ' + e.message);
+  }
+}
+
+/* ------------------------- Fahrplan-Sync (fahrplaene/fahrplan.json) -------------------------
+ * Stellt Linien-Metadaten (Farbe, Fahrzeugtyp, Betriebszeiten, Sortierung) und alle Fahrzeuge
+ * aus der Quelle-of-Truth fahrplan.json bereit – bei jedem Start idempotent.
+ * SB-Altkürzel (SB27/SB24) werden auf die aktuelle Linie 24 gemappt, damit Referenzen (Lizenzen) erhalten bleiben.
+ */
+const LEGACY_SHORTS = { '24': ['24', 'SB27', 'SB24'] };
+
+async function syncFahrplanFromJson() {
+  const jsonPath = path.join(__dirname, 'fahrplaene', 'fahrplan.json');
+  let fp;
+  try {
+    fp = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  } catch (e) {
+    throw new Error('fahrplan.json nicht lesbar: ' + e.message);
+  }
+
+  const canons = new Map();
+  for (const short of Object.keys(LEGACY_SHORTS)) {
+    for (const alias of LEGACY_SHORTS[short]) canons.set(alias, short);
+  }
+
+  for (let i = 0; i < (fp.lines || []).length; i++) {
+    const line = fp.lines[i];
+    const short = String(line.short || line.line || '');
+    if (!short) continue;
+    const want = canons.get(short) || short;
+    let row = null;
+    const aliases = [want].concat(LEGACY_SHORTS[want] || []);
+    for (const a of aliases) {
+      row = await get(`SELECT * FROM linien WHERE LOWER(short) = LOWER(?)`, [a]);
+      if (row) break;
+    }
+    if (!row) {
+      const ins = await run(`INSERT INTO linien (name, short, active, sort) VALUES (?, ?, 1, ?)`,
+        [line.name, want, i]);
+      row = { id: ins.lastRowId };
+    } else if (row.short !== want || row.name !== line.name) {
+      await run(`UPDATE linien SET name = ?, short = ?, sort = ? WHERE id = ?`,
+        [line.name, want, i, row.id]);
+    } else if (row.sort !== i) {
+      await run(`UPDATE linien SET sort = ? WHERE id = ?`, [i, row.id]);
+    }
+    await run(`UPDATE linien SET farbe = ?, fahrzeugtyp = ?, betrieb_von_wd = ?, betrieb_bis_wd = ?, betrieb_von_we = ?, betrieb_bis_we = ? WHERE id = ?`,
+      [line.color || '', line.fahrzeugtyp || '', line.betrieb_von_wd, line.betrieb_bis_wd, line.betrieb_von_we, line.betrieb_bis_we, row.id]);
+  }
+
+  const fahrzeuge = fp.fahrzeuge || [];
+  for (let i = 0; i < fahrzeuge.length; i++) {
+    const fz = fahrzeuge[i];
+    const wn = String(fz.wagennummer || '').trim();
+    if (!wn) continue;
+    const existing = await get(`SELECT id FROM fahrzeuge WHERE wagennummer = ?`, [wn]);
+    const vals = [fz.kennzeichen || '', fz.typ || 'solo', fz.modell || '', fz.bestand_seit || '', fz.bestand_bis || '', fz.status || 'einsatzbereit', fz.bemerkung || ''];
+    if (existing) {
+      await run(`UPDATE fahrzeuge SET kennzeichen = ?, typ = ?, modell = ?, bestand_seit = ?, bestand_bis = ?, status = ?, bemerkung = ?, sort = ? WHERE id = ?`,
+        [...vals, i, existing.id]);
+    } else {
+      await run(`INSERT INTO fahrzeuge (wagennummer, kennzeichen, typ, modell, bestand_seit, bestand_bis, status, bemerkung, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [wn, ...vals, i]);
+    }
+  }
+  console.log('[seed] Fahrplan-Sync: ' + (fp.lines || []).length + ' Linien, ' + fahrzeuge.length + ' Fahrzeuge');
 }
 
 let initResolved = false;
@@ -309,4 +420,4 @@ async function init() {
   initResolved = true;
 }
 
-module.exports = { get, all, run, transaction, hasColumn: tableInfo, init };
+module.exports = { get, all, run, transaction, hasColumn: tableInfo, init, syncFahrplanFromJson };

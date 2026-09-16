@@ -9,6 +9,7 @@ const AdminPage = {
     ['dienste', 'Dienste'],
     ['linien', 'Linien'],
     ['standorte', 'Standorte'],
+    ['fahrzeuge', 'Fahrzeugplan'],
     ['hinweise', 'Hinweise'],
     ['meldung', 'Meldung & Regeln']
   ],
@@ -37,6 +38,7 @@ const AdminPage = {
       if (this.sub === 'dienste') return await this.diensteView(body);
       if (this.sub === 'linien') return await this.linienView(body);
       if (this.sub === 'standorte') return await this.standorteView(body);
+      if (this.sub === 'fahrzeuge') return await this.fahrzeugeView(body);
       if (this.sub === 'hinweise') return await this.newsView(body);
       if (this.sub === 'meldung') return await this.meldungView(body);
     } catch (e) {
@@ -187,8 +189,10 @@ const AdminPage = {
 
   /* ------------------------------ SHIFTS ------------------------------ */
   async shiftsView(body) {
-    const data = await API.get('/api/admin/shifts');
+    const [data, linienData] = await Promise.all([API.get('/api/admin/shifts'), API.get('/api/admin/linien')]);
     const shifts = data.shifts || [];
+    const linien = linienData.linien || [];
+    const lineOptions = linien.filter((l) => l.active && l.short);
     body.innerHTML = `
       <div class="panel">
         <div class="panel-head"><h2>Shift erstellen</h2></div>
@@ -197,23 +201,44 @@ const AdminPage = {
           <label class="field"><span class="field-label">Datum</span><input class="input" type="date" id="s-date" required/></label>
           <label class="field"><span class="field-label">Beginn</span><input class="input" type="time" id="s-start" required/></label>
           <label class="field"><span class="field-label">Ende</span><input class="input" type="time" id="s-end"/></label>
+          <label class="field"><span class="field-label">Betriebszeit von (optional)</span><input class="input" type="time" id="s-bvon" title="Eingrenzung der Fahrplan-Zeiten (sonst Beginn/Ende)"/></label>
+          <label class="field"><span class="field-label">Betriebszeit bis (optional)</span><input class="input" type="time" id="s-bbis" title="Eingrenzung der Fahrplan-Zeiten (sonst Beginn/Ende)"/></label>
           <label class="field"><span class="field-label">Status</span>
             <select class="input" id="s-status"><option value="draft">Entwurf</option><option value="published">Veröffentlicht</option></select>
           </label>
-          <div class="field" style="grid-column:1/-1"><button class="btn btn-primary" type="submit">Shift anlegen</button></div>
+          <div class="field" style="grid-column:1/-1"><span class="field-label">Details</span>
+            <textarea class="input" id="s-desc" rows="3" placeholder="Beschreibung / Hinweise zum Tag"></textarea>
+          </div>
+          <div class="field" style="grid-column:1/-1"><span class="field-label">Linien an diesem Tag</span>
+            <div class="chips">
+              ${lineOptions.map((l) => `
+                <label class="chip chip-toggle">
+                  <input type="checkbox" value="${esc(l.short)}" data-check-line/> ${esc(l.short)}
+                </label>`).join('')}
+            </div>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label class="row-check"><input type="checkbox" id="s-auto"/> Dienste automatisch generieren (alle Fahrten besetzen)</label>
+          </div>
+          <div class="field" style="grid-column:1/-1"><span class="muted-sm" id="s-preview"></span></div>
+          <div class="field" style="grid-column:1/-1;display:flex;gap:8px">
+            <button class="btn btn-ghost" type="button" id="s-preview-btn">Dienste-Vorschau</button>
+            <button class="btn btn-primary" type="submit">Shift anlegen</button>
+          </div>
         </form>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Shifts</h2><span class="muted-sm">${shifts.length}</span></div>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>Titel</th><th>Datum</th><th>Zeit</th><th>Status</th><th>Sign-Up</th><th></th></tr></thead>
+            <thead><tr><th>Titel</th><th>Datum</th><th>Zeit</th><th>Linien</th><th>Status</th><th>Sign-Up</th><th></th></tr></thead>
             <tbody>
               ${shifts.map((s) => `
                 <tr>
-                  <td><b>${esc(s.title)}</b></td>
+                  <td><b>${esc(s.title)}</b>${s.description ? `<div class="muted-sm">${esc(s.description).slice(0, 80)}</div>` : ''}</td>
                   <td>${esc(fmtDate(s.date))}</td>
                   <td class="num">${esc(fmtTime(s.time_start))} – ${esc(fmtTime(s.time_end))}</td>
+                  <td>${(s.linien || []).length ? (s.linien || []).map((l) => `<span class="badge">${esc(l)}</span>`).join(' ') : (s.auto_dienste ? '<span class="badge badge-gray">?</span>' : '—')}</td>
                   <td>${s.status === 'published' ? '<span class="badge badge-green">Veröffentlicht</span>' : '<span class="badge badge-gray">Entwurf</span>'}</td>
                   <td>${s.signup_state === 'offen' ? '<span class="badge badge-green">offen</span>' : s.signup_state === 'geschlossen' ? '<span class="badge badge-amber">geschlossen</span>' : s.signup_state === 'vorbei' ? '<span class="badge badge-gray">vorbei</span>' : '—'}</td>
                   <td style="white-space:nowrap">
@@ -228,17 +253,40 @@ const AdminPage = {
       </div>
     `;
 
+    const checkedLines = () => Array.from(body.querySelectorAll('[data-check-line]')).filter((c) => c.checked).map((c) => c.value);
+
+    body.querySelector('#s-preview-btn').addEventListener('click', async () => {
+      const draft = {
+        linien: checkedLines(),
+        betrieb_von: body.querySelector('#s-bvon').value,
+        betrieb_bis: body.querySelector('#s-bbis').value,
+        date: body.querySelector('#s-date').value
+      };
+      if (!draft.date || !draft.linien.length) { body.querySelector('#s-preview').textContent = 'Bitte Datum und mindestens eine Linie wählen.'; return; }
+      body.querySelector('#s-preview').textContent = 'Vorschau wird berechnet…';
+      try {
+        const r = await API.post('/api/preview/dienste', draft);
+        body.querySelector('#s-preview').textContent = `${r.fahrten} Fahrten – ${r.dienste.length} vorgeschlagene Dienste bewertet.`;
+      } catch (err) { body.querySelector('#s-preview').textContent = 'Fehler: ' + err.message; }
+    });
+
     body.querySelector('#create-shift-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        await API.post('/api/admin/shifts', {
+        const payload = {
           title: body.querySelector('#s-title').value,
+          description: body.querySelector('#s-desc').value,
           date: body.querySelector('#s-date').value,
           time_start: body.querySelector('#s-start').value,
           time_end: body.querySelector('#s-end').value,
-          status: body.querySelector('#s-status').value
-        });
-        App.toast('Shift angelegt. Füge jetzt die Dienste hinzu.');
+          betrieb_von: body.querySelector('#s-bvon').value,
+          betrieb_bis: body.querySelector('#s-bbis').value,
+          status: body.querySelector('#s-status').value,
+          linien: checkedLines(),
+          auto_generate: body.querySelector('#s-auto').checked
+        };
+        const r = await API.post('/api/admin/shifts', payload);
+        App.toast(r.generated ? `Shift angelegt: ${r.generated} Dienste automatisch erzeugt.` : 'Shift angelegt. Füge jetzt die Dienste hinzu.');
         App.reload();
       } catch (err) { App.toast(err.message, 'error'); }
     });
@@ -332,7 +380,9 @@ const AdminPage = {
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2>Dienste ${currentShift ? '· ' + esc(currentShift.title) : ''}</h2><span class="muted-sm">${filtered.length}</span></div>
+        <div class="panel-head"><h2>Dienste ${currentShift ? '· ' + esc(currentShift.title) : ''}</h2><span class="muted-sm">${filtered.length}</span>
+          ${currentShift ? `<button class="btn btn-ghost btn-xs" id="gen-duties" ${currentShift.linien && currentShift.linien.length ? '' : 'disabled title="Für diese Shift sind keine Linien ausgewählt"'} title="Dienste aus dem Fahrplan neu erzeugen">Dienste generieren</button>` : ''}
+        </div>
         ${filtered.length ? `
           <div class="table-wrap">
             <table class="table">
@@ -360,6 +410,22 @@ const AdminPage = {
     `;
 
     const typeSel = body.querySelector('#d-type');
+
+    const genBtn = body.querySelector('#gen-duties');
+    if (genBtn) {
+      genBtn.addEventListener('click', async () => {
+        const existing = filtered.length;
+        const msg = existing > 0
+          ? `Es existieren bereits ${existing} Dienste. Neu generieren ersetzt sie (Zuordnungen werden mit entfernt). Fortfahren?`
+          : 'Dienste automatisch aus dem Fahrplan erzeugen?';
+        if (!confirm(msg)) return;
+        try {
+          const r = await API.post('/api/admin/shifts/' + currentShift.id + '/generate' + (existing ? '?replace=1' : ''), {});
+          App.toast(r.generated + ' Dienste aus ' + r.fahrten + ' Fahrten erzeugt.');
+          App.reload();
+        } catch (err) { App.toast(err.message, 'error'); }
+      });
+    }
     const toggleTypeFields = () => {
       const t = typeSel.value;
       body.querySelectorAll('.busf, .wechself, .strafef').forEach((el) => { el.style.display = 'none'; });
@@ -584,6 +650,149 @@ const AdminPage = {
         if (!confirm('Standort wirklich löschen?')) return;
         try {
           await API.del('/api/admin/standorte/' + b.dataset.delSt);
+          App.reload();
+        } catch (err) { App.toast(err.message, 'error'); }
+      });
+    });
+  },
+
+  /* ------------------------------ FAHRZEUGPLAN ------------------------------ */
+  async fahrzeugeView(body) {
+    const data = await API.get('/api/admin/fahrzeuge');
+    const fahrzeuge = data.fahrzeuge || [];
+    const typLabel = { solo: 'Solo', gelenk: 'Gelenk', gelenk_solo: 'Gelenk/Solo', fahrschule: 'Fahrschule' };
+    const statusBadge = {
+      einsatzbereit: '<span class="badge badge-green">Einsatzbereit</span>',
+      nicht_einsatzbereit: '<span class="badge badge-amber">Nicht einsatzbereit</span>',
+      sonderfahrzeug: '<span class="badge badge-gray">Sonderfahrzeug</span>',
+      fahrschule: '<span class="badge badge-gray">Fahrschule</span>'
+    };
+    body.innerHTML = `
+      <div class="panel">
+        <div class="panel-head"><h2>Fahrzeug hinzufügen</h2></div>
+        <form class="form-grid" id="fz-form">
+          <label class="field"><span class="field-label">Wagennummer</span><input class="input" id="fz-wnr" placeholder="z. B. 1101" required/></label>
+          <label class="field"><span class="field-label">Kennzeichen</span><input class="input" id="fz-kz" placeholder="z. B. GV-VB 1101"/></label>
+          <label class="field"><span class="field-label">Typ</span>
+            <select class="input" id="fz-typ"><option value="solo">Solo</option><option value="gelenk">Gelenk</option><option value="gelenk_solo">Gelenk/Solo</option><option value="fahrschule">Fahrschule</option></select>
+          </label>
+          <label class="field"><span class="field-label">Modell</span><input class="input" id="fz-modell" placeholder="z. B. MAN A37"/></label>
+          <label class="field"><span class="field-label">Status</span>
+            <select class="input" id="fz-status">
+              <option value="einsatzbereit">Einsatzbereit</option>
+              <option value="nicht_einsatzbereit">Nicht einsatzbereit</option>
+              <option value="sonderfahrzeug">Sonderfahrzeug</option>
+              <option value="fahrschule">Fahrschule</option>
+            </select>
+          </label>
+          <label class="field"><span class="field-label">Bestand seit</span><input class="input" id="fz-seit" placeholder="01.09.2026"/></label>
+          <label class="field"><span class="field-label">Bestand bis</span><input class="input" id="fz-bis" placeholder="optional"/></label>
+          <label class="field" style="grid-column:1/-1"><span class="field-label">Bemerkung</span><input class="input" id="fz-rem" placeholder="optional"/></label>
+          <div class="field" style="grid-column:1/-1"><button class="btn btn-primary" type="submit">Fahrzeug hinzufügen</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Fahrzeugplan</h2><span class="muted-sm">${fahrzeuge.length} Fahrzeuge</span></div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Nr.</th><th>Kennzeichen</th><th>Typ</th><th>Modell</th><th>Status</th><th>Bestand</th><th>Bemerkung</th><th></th></tr></thead>
+            <tbody>
+              ${fahrzeuge.map((f) => `
+                <tr>
+                  <td><b>${esc(f.wagennummer)}</b></td>
+                  <td>${esc(f.kennzeichen || '–')}</td>
+                  <td>${esc(typLabel[f.typ] || f.typ)}</td>
+                  <td>${esc(f.modell || '–')}</td>
+                  <td>${statusBadge[f.status] || '<span class="badge badge-gray">' + esc(f.status || '') + '</span>'}</td>
+                  <td>${esc(f.bestand_seit || '–')}${f.bestand_bis ? ' → ' + esc(f.bestand_bis) : ''}</td>
+                  <td class="muted-sm">${esc(f.bemerkung || '')}</td>
+                  <td style="white-space:nowrap">
+                    <button class="btn btn-ghost btn-xs" data-editfz="${f.id}">Bearbeiten</button>
+                    <button class="btn btn-danger btn-xs" data-delfz="${f.id}">Löschen</button>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="fz-edit-slot"></div>
+    `;
+
+    const readForm = () => ({
+      wagennummer: body.querySelector('#fz-wnr').value,
+      kennzeichen: body.querySelector('#fz-kz').value,
+      typ: body.querySelector('#fz-typ').value,
+      modell: body.querySelector('#fz-modell').value,
+      bestand_seit: body.querySelector('#fz-seit').value,
+      bestand_bis: body.querySelector('#fz-bis').value,
+      status: body.querySelector('#fz-status').value,
+      bemerkung: body.querySelector('#fz-rem').value
+    });
+
+    body.querySelector('#fz-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await API.post('/api/admin/fahrzeuge', readForm());
+        App.toast('Fahrzeug hinzugefügt.');
+        App.reload();
+      } catch (err) { App.toast(err.message, 'error'); }
+    });
+
+    body.querySelectorAll('[data-editfz]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const f = fahrzeuge.find((x) => x.id === parseInt(b.dataset.editfz, 10));
+        const slot = body.querySelector('#fz-edit-slot');
+        slot.innerHTML = `
+          <div class="panel">
+            <div class="panel-head"><h2>Fahrzeug bearbeiten: ${esc(f.wagennummer)}</h2><button class="icon-btn" data-close-fz>✕</button></div>
+            <form class="form-grid" id="fz-edit-form">
+              <label class="field"><span class="field-label">Wagennummer</span><input class="input" id="efz-wnr" value="${esc(f.wagennummer)}"/></label>
+              <label class="field"><span class="field-label">Kennzeichen</span><input class="input" id="efz-kz" value="${esc(f.kennzeichen || '')}"/></label>
+              <label class="field"><span class="field-label">Typ</span>
+                <select class="input" id="efz-typ">
+                  <option value="solo" ${f.typ === 'solo' ? 'selected' : ''}>Solo</option>
+                  <option value="gelenk" ${f.typ === 'gelenk' ? 'selected' : ''}>Gelenk</option>
+                  <option value="gelenk_solo" ${f.typ === 'gelenk_solo' ? 'selected' : ''}>Gelenk/Solo</option>
+                  <option value="fahrschule" ${f.typ === 'fahrschule' ? 'selected' : ''}>Fahrschule</option>
+                </select>
+              </label>
+              <label class="field"><span class="field-label">Modell</span><input class="input" id="efz-modell" value="${esc(f.modell || '')}"/></label>
+              <label class="field"><span class="field-label">Status</span>
+                <select class="input" id="efz-status">
+                  <option value="einsatzbereit" ${f.status === 'einsatzbereit' ? 'selected' : ''}>Einsatzbereit</option>
+                  <option value="nicht_einsatzbereit" ${f.status === 'nicht_einsatzbereit' ? 'selected' : ''}>Nicht einsatzbereit</option>
+                  <option value="sonderfahrzeug" ${f.status === 'sonderfahrzeug' ? 'selected' : ''}>Sonderfahrzeug</option>
+                  <option value="fahrschule" ${f.status === 'fahrschule' ? 'selected' : ''}>Fahrschule</option>
+                </select>
+              </label>
+              <label class="field"><span class="field-label">Bestand seit</span><input class="input" id="efz-seit" value="${esc(f.bestand_seit || '')}"/></label>
+              <label class="field"><span class="field-label">Bestand bis</span><input class="input" id="efz-bis" value="${esc(f.bestand_bis || '')}"/></label>
+              <label class="field"><span class="field-label">Bemerkung</span><input class="input" id="efz-rem" value="${esc(f.bemerkung || '')}"/></label>
+              <div class="field" style="grid-column:1/-1"><button class="btn btn-primary" type="submit">Speichern</button></div>
+            </form>
+          </div>`;
+        slot.querySelector('[data-close-fz]').addEventListener('click', () => { slot.innerHTML = ''; });
+        slot.querySelector('#fz-edit-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const val = (id) => slot.querySelector(id).value;
+          try {
+            await API.put('/api/admin/fahrzeuge/' + f.id, {
+              wagennummer: val('#efz-wnr'), kennzeichen: val('#efz-kz'), typ: val('#efz-typ'),
+              modell: val('#efz-modell'), bestand_seit: val('#efz-seit'), bestand_bis: val('#efz-bis'),
+              status: val('#efz-status'), bemerkung: val('#efz-rem')
+            });
+            App.toast('Gespeichert.');
+            App.reload();
+          } catch (err) { App.toast(err.message, 'error'); }
+        });
+      });
+    });
+
+    body.querySelectorAll('[data-delfz]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        if (!confirm('Fahrzeug wirklich löschen?')) return;
+        try {
+          await API.del('/api/admin/fahrzeuge/' + b.dataset.delfz);
           App.reload();
         } catch (err) { App.toast(err.message, 'error'); }
       });

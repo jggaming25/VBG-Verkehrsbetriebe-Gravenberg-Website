@@ -331,6 +331,10 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .chip:hover:not(.active) { background: var(--surface-hover); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-toggle input { margin: 0; }
+.chip:has(input:checked) { background: var(--primary); color: #fff; border-color: var(--primary); }
+.row-check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .88rem; }
 .badge {
   display: inline-block;
   padding: 3px 10px;

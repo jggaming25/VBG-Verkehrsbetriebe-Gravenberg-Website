@@ -159,7 +159,7 @@ const DienstplanPage = {
 
     if (canManage) {
       const btnAuto = container.querySelector('#btn-autoshift');
-      btnAuto.addEventListener('click', async () => {
+      if (btnAuto) btnAuto.addEventListener('click', async () => {
         if (!confirm('Autoshift starten? Vorschläge werden neu erzeugt, bestätigte Einteilungen bleiben erhalten.')) return;
         try {
           await API.post('/api/admin/autoshift', { shift_id: this.state.shiftId });
@@ -169,7 +169,7 @@ const DienstplanPage = {
       });
 
       const btnConfirm = container.querySelector('#btn-confirm');
-      btnConfirm.addEventListener('click', async () => {
+      if (btnConfirm) btnConfirm.addEventListener('click', async () => {
         try {
           await API.post('/api/admin/confirm-plan', { shift_id: this.state.shiftId });
           App.toast('Alle Vorschläge bestätigt.');

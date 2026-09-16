@@ -2,6 +2,7 @@
 node_modules/
 local.db
 local.db-*
+test_*.db
 .env
 .env.*
 *.log
