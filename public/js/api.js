@@ -82,33 +82,6 @@ function avatarHtml(user, sizeClass) {
   return `<span class="avatar ${sizeClass || ''}">${ch}</span>`;
 }
 
-/* Kursnummern sind je Linie pro Tag mehrfach belegt (mehrere Dienst-Abschnitte).
-   Liefert pro Dienst/Fahrt den Abschnitt (z. B. "Abschnitt 2/3"), wenn ein Kurs
-   in mehreren Diensten vorkommt – damit keine doppelt wirkenden Kursnummern erscheinen. */
-function fahrtKursSegments(duties) {
-  const dutiesSorted = (duties || []).filter((d) => (d.fahrten || []).length)
-    .sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
-  const byKey = {};
-  for (const d of dutiesSorted) {
-    const seen = new Set();
-    for (const f of d.fahrten) {
-      const key = String(f.linie || '') + ':' + (f.kurs == null ? '' : f.kurs);
-      if (key === ':') continue;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      (byKey[key] = byKey[key] || []).push(d.id);
-    }
-  }
-  const indexOf = {};
-  for (const key of Object.keys(byKey)) {
-    byKey[key].forEach((dutyId, i) => { indexOf[key + '#' + dutyId] = { part: i + 1, of: byKey[key].length }; });
-  }
-  return (d, f) => {
-    const key = String(f.linie || '') + ':' + (f.kurs == null ? '' : f.kurs);
-    return indexOf[key + '#' + d.id] || null;
-  };
-}
-
 function fileToDataURL(file, maxSide) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

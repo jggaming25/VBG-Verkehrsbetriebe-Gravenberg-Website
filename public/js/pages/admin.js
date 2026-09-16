@@ -338,7 +338,6 @@ const AdminPage = {
     const persistedShift = parseInt(localStorage.getItem('vbg_admin_shift') || '0', 10);
     const currentShift = shifts.find((s) => s.id === persistedShift) || shifts[0];
     const filtered = currentShift ? (data.duties || []).filter((d) => d.shift_id === currentShift.id) : [];
-    const kursSeg = fahrtKursSegments(filtered);
 
     body.innerHTML = `
       <div class="panel">
@@ -398,8 +397,7 @@ const AdminPage = {
                     <td class="muted-sm">
                       ${d.type === 'bus' ? esc(d.linie || '–') : d.type === 'wechsel' ? esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name) : esc(d.standort || '–')}
                       ${d.type === 'bus' && (d.fahrten || []).length ? `<div class="trip-list">${d.fahrten.map((f) => {
-                        const seg = kursSeg(d, f);
-                        return `<div class="trip-mini"><span class="trip-time">${esc(fmtTime(f.start))}–${esc(fmtTime(f.end))}</span> <span class="plan-fahrt-badge" style="--lc:${f.color ? esc(f.color) : '#555'}">${esc(/^\d+$/.test(String(f.linie || '')) ? 'L' + f.linie : f.linie)}</span> Kurs ${esc(f.kurs)}${seg && seg.of > 1 ? ' <span class="plan-seg">' + seg.part + '/' + seg.of + '</span>' : ''} ${String(f.richtung) === 'zurück' ? '←' : '→'} · ${esc(f.von)} → ${esc(f.nach)}</div>`;
+                        return `<div class="trip-mini"><span class="trip-time">${esc(fmtTime(f.start))}–${esc(fmtTime(f.end))}</span> <span class="plan-fahrt-badge" style="--lc:${f.color ? esc(f.color) : '#555'}">${esc(/^\d+$/.test(String(f.linie || '')) ? 'L' + f.linie : f.linie)}</span> ${String(f.richtung) === 'zurück' ? '←' : '→'} · ${esc(f.von)} → ${esc(f.nach)}</div>`;
                       }).join('')}</div>` : ''}
                     </td>
                     <td class="num">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</td>

@@ -14,7 +14,6 @@ const MeineDienstePage = {
       ${list.map((f) => `<div class="mine-trip">
         <span class="plan-fahrt-zeit">${f.start ? esc(fmtTime(f.start)) + '–' + esc(fmtTime(f.end)) : '–'}</span>
         <span class="plan-fahrt-badge" style="--lc:${f.color ? esc(f.color) : '#555'}">${esc(this.linieLabel(f.linie))}</span>
-        <span class="plan-fahrt-kurs">Kurs ${esc(f.kurs)}</span>
         <span class="plan-fahrt-richt ${String(f.richtung) === 'zurück' ? 'zurueck' : ''}">${String(f.richtung) === 'zurück' ? '←' : '→'}</span>
         <span class="plan-fahrt-strecke"><span class="muted">${esc(f.von)}</span> → <span class="muted">${esc(f.nach)}</span></span>
       </div>`).join('')}

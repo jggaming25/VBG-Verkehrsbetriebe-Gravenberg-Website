@@ -382,12 +382,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 
 /* Fahrten-Tabelle unter dem Dienst-Kopf */
 .plan-fahrten-wrap { border-top: 1px dashed var(--border); background: var(--bg-soft); padding: 8px 20px 12px; }
-.plan-fahrten-block { display: grid; grid-template-columns: 118px 64px 116px 40px 1fr; gap: 2px 12px; max-width: 920px; }
+.plan-fahrten-block { display: grid; grid-template-columns: 118px 64px 40px 1fr; gap: 2px 12px; max-width: 920px; }
 .plan-fahrt { display: contents; color: var(--text); }
 .plan-fahrt-zeit { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .76rem; white-space: nowrap; }
 .plan-fahrt-badge { justify-self: start; background: var(--lc, #555); color: #fff; font-weight: 800; font-size: .68rem; padding: 1px 8px; border-radius: 20px; white-space: nowrap; letter-spacing: .5px; }
-.plan-fahrt-kurs { font-size: .76rem; font-weight: 800; white-space: nowrap; }
-.plan-seg { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: .6rem; font-weight: 800; padding: 0 6px; margin-left: 3px; color: var(--text-muted); vertical-align: 1px; }
 .plan-fahrt-richt { font-size: .74rem; font-weight: 800; color: var(--primary); }
 .plan-fahrt-richt.zurueck { color: var(--text-muted); }
 .plan-fahrt-strecke { font-size: .76rem; }
@@ -415,7 +413,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 
 /* Meine Dienste */
 .mine-fahrten summary { cursor: pointer; font-size: .74rem; color: var(--primary); font-weight: 700; }
-.mine-trips { display: grid; grid-template-columns: 118px 64px 116px 1fr; gap: 2px 12px; padding-top: 8px; max-width: 760px; }
+.mine-trips { display: grid; grid-template-columns: 118px 64px 1fr; gap: 2px 12px; padding-top: 8px; max-width: 760px; }
 .mine-trip { display: contents; color: var(--text); }
 
 @media (max-width: 700px) {

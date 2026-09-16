@@ -14,10 +14,9 @@ const DienstplanPage = {
     return /^\d+$/.test(s) ? 'L' + s : s;
   },
 
-  /* Einzelne Fahrt für die Übersicht (Zeit, Linie, Kurs, Richtung, Strecke) */
-  fahrtHtml(d, f, i, kursSeg) {
+  /* Einzelne Fahrt für die Übersicht (Zeit, Linie, Richtung, Strecke) */
+  fahrtHtml(d, f, i) {
     const prev = i > 0 ? (d.fahrten || [])[i - 1] : null;
-    const seg = kursSeg ? kursSeg(d, f) : null;
     const wechsel = prev && String(prev.linie) !== String(f.linie)
       ? `<div class="plan-wechsel">Linienwechsel ${this.linieLabel(prev.linie)} → ${this.linieLabel(f.linie)}</div>`
       : '';
@@ -26,13 +25,12 @@ const DienstplanPage = {
       <div class="plan-fahrt">
         <span class="plan-fahrt-zeit">${f.start ? esc(fmtTime(f.start)) + '–' + esc(fmtTime(f.end)) : '–'}</span>
         <span class="plan-fahrt-badge" style="--lc:${kolort}">${esc(this.linieLabel(f.linie))}</span>
-        <span class="plan-fahrt-kurs">Kurs ${esc(f.kurs)}${seg && seg.of > 1 ? `<span class="plan-seg" title="Kurs ${esc(f.linie)} · Abschnitt ${seg.part} von ${seg.of}">${seg.part}/${seg.of}</span>` : ''}</span>
         <span class="plan-fahrt-richt ${String(f.richtung) === 'zurück' ? 'zurueck' : ''}" title="${esc(f.richtung)}">${String(f.richtung) === 'zurück' ? '←' : '→'}</span>
         <span class="plan-fahrt-strecke"><span class="muted">${esc(f.von)}</span> → <span class="muted">${esc(f.nach)}</span></span>
       </div>`;
   },
 
-  /* Zusammenfassung eines bus-Dienstes: Umläufe + reine Fahrzeit */
+  /* Zusammenfassung eines bus-Dienstes: Linien-Umläufe + reine Fahrzeit */
   summary(d) {
     const list = d.fahrten || [];
     if (!list.length) return '';
@@ -45,13 +43,13 @@ const DienstplanPage = {
         const b = new Date(String(f.end).length === 16 ? f.end + ':00' : f.end);
         if (!isNaN(a) && !isNaN(b) && b > a) fzMin += (b - a) / 60000;
       }
-      const key = String(f.linie) + ':' + f.kurs;
-      if (!seen.has(key)) { seen.add(key); umlaeufe.push(this.linieLabel(f.linie) + ' · Kurs ' + f.kurs); }
+      const key = String(f.linie);
+      if (!seen.has(key)) { seen.add(key); umlaeufe.push(this.linieLabel(f.linie)); }
     }
     return `${list.length} Fahrten · ${Math.round(fzMin)} min Fahrtzeit` + (umlaeufe.length ? ' · Umläufe: ' + umlaeufe.join(' ⟶ ') : '');
   },
 
-  dutyRow(d, data, bySlot, kursSeg) {
+  dutyRow(d, data, bySlot) {
     const haupt = bySlot[d.id + ':haupt'];
     const reserve = bySlot[d.id + ':reserve'];
     const canManage = data.canManage;
@@ -70,7 +68,7 @@ const DienstplanPage = {
     if (sum) metaBits.push(sum);
 
     const fahrten = d.type === 'bus' && (d.fahrten || []).length
-      ? `<div class="plan-fahrten-block">${d.fahrten.map((f, i) => this.fahrtHtml(d, f, i, kursSeg)).join('')}</div>`
+      ? `<div class="plan-fahrten-block">${d.fahrten.map((f, i) => this.fahrtHtml(d, f, i)).join('')}</div>`
       : (d.note ? `<div class="plan-desc-note">${esc(d.note)}</div>` : '');
 
     return `
@@ -119,7 +117,6 @@ const DienstplanPage = {
     const canManage = data.canManage;
     const reserves = assignments.filter((a) => a.kind === 'reserve');
     const sig = (data.settings && data.settings.strafe_name) || 'Kundenservice Strafe';
-    const kursSeg = fahrtKursSegments(duties);
 
     const busDuties = duties.filter((d) => d.type !== 'strafe').sort((a, b) => (a.start || '').localeCompare(b.start || ''));
     const strafeDuties = duties.filter((d) => d.type === 'strafe').sort((a, b) => (a.start || '').localeCompare(b.start || ''));
@@ -164,13 +161,13 @@ const DienstplanPage = {
 
           <div class="plan-section">
             <div class="plan-section-head">BUSDIENSTE <small>${busDuties.length} Dienste · ganztägige Abdeckung</small></div>
-            ${busDuties.length ? busDuties.map((d) => this.dutyRow(d, data, bySlot, kursSeg)).join('') : '<div class="empty">Keine Busdienste eingeplant.</div>'}
+            ${busDuties.length ? busDuties.map((d) => this.dutyRow(d, data, bySlot)).join('') : '<div class="empty">Keine Busdienste eingeplant.</div>'}
           </div>
 
           ${strafeDuties.length ? `
             <div class="plan-section">
               <div class="plan-section-head">${esc(sig.toUpperCase())} <small>${strafeDuties.length} Dienste · Standorte</small></div>
-              ${strafeDuties.map((d) => this.dutyRow(d, data, bySlot, kursSeg)).join('')}
+              ${strafeDuties.map((d) => this.dutyRow(d, data, bySlot)).join('')}
             </div>` : ''}
 
           <div class="plan-section">
@@ -283,7 +280,7 @@ const DienstplanPage = {
       const dr = st.driving;
       const unlockStr = dr.atIso ? new Date(dr.atIso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
       const tripName = dr.atTrip
-        ? (String(dr.atTrip.linie).match(/^\d+$/) ? 'L' + dr.atTrip.linie : dr.atTrip.linie) + ' Kurs ' + dr.atTrip.kurs + ' (' + String(dr.atTrip.richtung === 'zurück' ? '←' : '→') + ' ' + dr.atTrip.von + ' → ' + dr.atTrip.nach + ')'
+        ? (String(dr.atTrip.linie).match(/^\d+$/) ? 'L' + dr.atTrip.linie : dr.atTrip.linie) + ' (' + String(dr.atTrip.richtung === 'zurück' ? '←' : '→') + ' ' + dr.atTrip.von + ' → ' + dr.atTrip.nach + ')'
         : '';
       return `
         <div class="panel-head"><h2>Activity</h2>
