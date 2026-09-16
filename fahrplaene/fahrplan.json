@@ -51,46 +51,68 @@
       "kurse": [
         {
           "kurs": 1,
-          "fahrzeug": "solo",
+          "fahrzeug": "gelenk",
           "ausruecken": "XX:50 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Stümp Voiskamp",
           "faehrt": [
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 0, "dauer": 15 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 30, "dauer": 15 }
+            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 0, "dauer": 16 },
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 30, "dauer": 16 }
           ]
         },
         {
           "kurs": 2,
-          "fahrzeug": "solo",
+          "fahrzeug": "gelenk/solo",
           "ausruecken": "XX:50 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 0, "dauer": 15 },
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 30, "dauer": 15 }
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 0, "dauer": 16 },
+            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 30, "dauer": 16 }
           ]
         },
         {
           "kurs": 3,
           "fahrzeug": "solo",
-          "ausruecken": "XX:20 / BTHF",
+          "ausruecken": "XX:00 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Stümp Voiskamp",
           "faehrt": [
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 15, "dauer": 15 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 45, "dauer": 15 }
+            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 10, "dauer": 16 },
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 40, "dauer": 16 }
           ]
         },
         {
           "kurs": 4,
           "fahrzeug": "solo",
-          "ausruecken": "XX:20 / BTHF",
+          "ausruecken": "XX:00 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 15, "dauer": 15 },
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 45, "dauer": 15 }
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 10, "dauer": 16 },
+            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 40, "dauer": 16 }
+          ]
+        },
+        {
+          "kurs": 5,
+          "fahrzeug": "solo",
+          "ausruecken": "XX:10 / BTHF",
+          "leerfahrt_von": "VBG Betriebshof",
+          "leerfahrt_nach": "Stümp Voiskamp",
+          "faehrt": [
+            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 20, "dauer": 16 },
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 50, "dauer": 16 }
+          ]
+        },
+        {
+          "kurs": 6,
+          "fahrzeug": "solo",
+          "ausruecken": "XX:10 / BTHF",
+          "leerfahrt_von": "VBG Betriebshof",
+          "leerfahrt_nach": "Gravenberg ZOB",
+          "faehrt": [
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 20, "dauer": 16 },
+            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 50, "dauer": 16 }
           ]
         }
       ]
@@ -137,27 +159,27 @@
         {
           "kurs": 1,
           "fahrzeug": "gelenk",
-          "ausruecken": "XX:50",
+          "ausruecken": "XX:50 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
-          "leerfahrt_nach": "Sorenkoppel",
+          "leerfahrt_nach": "Neuenburg Schule",
           "faehrt": [
-            { "richtung": "hin", "von": "Sorenkoppel", "nach": "Gravenberg ZOB", "offset": 0, "dauer": 10 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Sorenkoppel", "offset": 15, "dauer": 10 },
-            { "richtung": "hin", "von": "Sorenkoppel", "nach": "Gravenberg ZOB", "offset": 30, "dauer": 10 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Sorenkoppel", "offset": 45, "dauer": 10 }
+            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 0, "dauer": 8 },
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 20, "dauer": 8 },
+            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 40, "dauer": 8 },
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 48, "dauer": 8 }
           ]
         },
         {
           "kurs": 2,
-          "fahrzeug": "gelenk/solo",
-          "ausruecken": "XX:50",
+          "fahrzeug": "gelenk",
+          "ausruecken": "XX:50 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Sorenkoppel", "offset": 0, "dauer": 10 },
-            { "richtung": "hin", "von": "Sorenkoppel", "nach": "Gravenberg ZOB", "offset": 15, "dauer": 10 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Sorenkoppel", "offset": 30, "dauer": 10 },
-            { "richtung": "hin", "von": "Sorenkoppel", "nach": "Gravenberg ZOB", "offset": 45, "dauer": 10 }
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 0, "dauer": 8 },
+            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 20, "dauer": 8 },
+            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 40, "dauer": 8 },
+            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 48, "dauer": 8 }
           ]
         }
       ]
