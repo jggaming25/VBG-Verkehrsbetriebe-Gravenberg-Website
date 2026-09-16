@@ -276,7 +276,22 @@ const DUTY_SELECT = `
 
 async function dutiesForShift(shiftId) {
   const rows = await db.all(`${DUTY_SELECT} WHERE d.shift_id = ? ORDER BY d.start, d.sort, d.id`, [shiftId]);
-  return rows.map(dutyFull);
+  const duties = rows.map(dutyFull);
+  await attachFahrten(duties);
+  return duties;
+}
+
+async function attachFahrten(duties) {
+  if (!duties.length) return duties;
+  const ids = duties.map((d) => d.id);
+  const rows = await db.all(
+    `SELECT * FROM fahrten WHERE duty_id IN (${ids.map(() => '?').join(',')}) ORDER BY duty_id, seq`,
+    ids
+  );
+  const byDuty = {};
+  for (const f of rows) (byDuty[f.duty_id] = byDuty[f.duty_id] || []).push(f);
+  for (const d of duties) d.fahrten = byDuty[d.id] || [];
+  return duties;
 }
 
 async function assignmentsForShift(shiftId) {
@@ -963,12 +978,13 @@ app.post('/api/admin/shifts', requireAuth, requireAdmin, async (req, res) => {
   if (!b.title || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) return res.status(400).json({ error: 'Titel und Datum angeben.' });
   const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, linien, auto_dienste, betrieb_von, betrieb_bis, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.title, b.description, b.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(b.linien), b.auto_dienste, b.betrieb_von, b.betrieb_bis, req.user.id]);
-  let generated = 0;
+  let generated = 0, fahrtCount = 0;
   if (b.auto_dienste && b.linien.length) {
     const r = await generateDienstplanForShift(res2.lastRowId);
     generated = (r && r.generated) || 0;
+    fahrtCount = (r && r.fahrten) || 0;
   }
-  res.json({ ok: true, id: res2.lastRowId, generated });
+  res.json({ ok: true, id: res2.lastRowId, generated, fahrten: fahrtCount });
 });
 
 async function generateDienstplanForShift(shiftId) {
@@ -1011,11 +1027,19 @@ async function generateDienstplanForShift(shiftId) {
   };
 
   await db.transaction(async (t) => {
+    await t.run(`DELETE FROM fahrten WHERE duty_id IN (SELECT id FROM dutys WHERE shift_id = ?)`, [shiftId]);
     for (let i = 0; i < dienste.length; i++) {
       const d = dienste[i];
       const linieId = shortToId.get(String(d.linie || '').toLowerCase());
-      await t.run(`INSERT INTO dutys (shift_id, code, type, linie_id, fahrzeug, start, end, license_id, note, sort) VALUES (?, ?, 'bus', ?, ?, ?, ?, ?, ?, ?)`,
+      const dutyRes = await t.run(`INSERT INTO dutys (shift_id, code, type, linie_id, fahrzeug, start, end, license_id, note, sort) VALUES (?, ?, 'bus', ?, ?, ?, ?, ?, ?, ?)`,
         [shiftId, d.code, linieId || null, pickFahrzeug(d.linie), dateForMin(d.startAbs), dateForMin(d.endAbs), linieId || null, d.note, i]);
+      const dutyId = dutyRes.lastRowId;
+      let seq = 0;
+      for (const f of d.fahrten || []) {
+        await t.run(`INSERT INTO fahrten (duty_id, seq, linie, kurs, richtung, von, nach, start, end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [dutyId, seq, f.linie || '', f.kurs || null, f.richtung || '', f.von || '', f.nach || '', dateForMin(f.startAbs), dateForMin(f.endAbs)]);
+        seq++;
+      }
     }
   });
 
@@ -1098,8 +1122,13 @@ app.post('/api/admin/shifts/:id/duplicate', requireAuth, requireAdmin, async (re
   const newId = res2.lastRowId;
   const duties = await db.all(`SELECT * FROM dutys WHERE shift_id = ?`, [id]);
   for (const d of duties) {
-    await db.run(`INSERT INTO dutys (shift_id, code, type, linie_id, wechsel_from, wechsel_to, standort_id, fahrzeug, start, end, license_id, note, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    const r = await db.run(`INSERT INTO dutys (shift_id, code, type, linie_id, wechsel_from, wechsel_to, standort_id, fahrzeug, start, end, license_id, note, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [newId, d.code, d.type, d.linie_id, d.wechsel_from, d.wechsel_to, d.standort_id, d.fahrzeug, d.start, d.end, d.license_id, d.note, d.sort]);
+    const fahrten = await db.all(`SELECT * FROM fahrten WHERE duty_id = ? ORDER BY seq`, [d.id]);
+    for (const f of fahrten) {
+      await db.run(`INSERT INTO fahrten (duty_id, seq, linie, kurs, richtung, von, nach, start, end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [r.lastRowId, f.seq, f.linie, f.kurs, f.richtung, f.von, f.nach, f.start, f.end]);
+    }
   }
   res.json({ ok: true, id: newId });
 });
@@ -1108,7 +1137,7 @@ app.post('/api/admin/shifts/:id/duplicate', requireAuth, requireAdmin, async (re
 
 app.get('/api/admin/dutys', requireAuth, requireScheduler, async (req, res) => {
   const shiftId = parseInt(req.query.shift_id || '0', 10);
-  const duties = shiftId ? await dutiesForShift(shiftId) : (await db.all(`${DUTY_SELECT} ORDER BY d.start`)).map(dutyFull);
+  const duties = shiftId ? await dutiesForShift(shiftId) : await attachFahrten((await db.all(`${DUTY_SELECT} ORDER BY d.start`)).map(dutyFull));
   const shifts = await listShifts(true);
   const linien = await db.all(`SELECT * FROM linien ORDER BY sort, name`);
   const standorte = await db.all(`SELECT * FROM standorte ORDER BY sort, name`);

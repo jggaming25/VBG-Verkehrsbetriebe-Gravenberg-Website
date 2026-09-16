@@ -386,13 +386,17 @@ const AdminPage = {
         ${filtered.length ? `
           <div class="table-wrap">
             <table class="table">
-              <thead><tr><th>Code</th><th>Typ</th><th>Linie / Wechsel / Standort</th><th>Zeit</th><th>Fahrzeug</th><th>Lizenz</th><th>Besetzt</th><th></th></tr></thead>
+              <thead><tr><th>Code</th><th>Typ</th><th>Linie / Wechsel / Standort · Fahrten</th><th>Zeit</th><th>Fahrzeug</th><th>Lizenz</th><th>Besetzt</th><th></th></tr></thead>
               <tbody>
                 ${filtered.sort((a, b) => (a.start || '').localeCompare(b.start || '')).map((d) => `
                   <tr data-duid="${d.id}" data-duty="${JSON.stringify({ id: d.id, code: d.code, type: d.type, linie_id: d.linie_id, wechsel_from: d.wechsel_from, wechsel_to: d.wechsel_to, standort_id: d.standort_id, fahrzeug: d.fahrzeug, start: d.start, end: d.end, license_id: d.license_id, note: d.note })}">
                     <td><b>${esc(d.code)}</b></td>
                     <td>${esc(VBG.dutyTypes[d.type] || d.type)}</td>
-                    <td class="muted-sm">${d.type === 'bus' ? esc(d.linie || '–') : d.type === 'wechsel' ? esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name) : esc(d.standort || '–')}</td>
+                    <td class="muted-sm">
+                      ${d.type === 'bus' ? esc(d.linie || '–') : d.type === 'wechsel' ? esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name) : esc(d.standort || '–')}
+                      ${d.type === 'bus' && (d.fahrten || []).length ? `<div class="trip-list">${d.fahrten.map((f) => `
+                        <div class="trip-mini"><span class="trip-time">${esc(fmtTime(f.start))}–${esc(fmtTime(f.end))}</span> L${esc(f.linie)} Kurs ${esc(f.kurs)} ${esc(f.richtung)} · ${esc(f.von)} → ${esc(f.nach)}</div>`).join('')}</div>` : ''}
+                    </td>
                     <td class="num">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</td>
                     <td>${esc(d.fahrzeug || '–')}</td>
                     <td>${esc(d.license || '–')}</td>

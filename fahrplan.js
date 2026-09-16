@@ -219,6 +219,8 @@ function buildDienstplan(trips) {
       fahrten: sorted.map((x) => ({
         zeit: fmtMin(x.start),
         ende: fmtMin(x.end),
+        startAbs: x.start,
+        endAbs: x.end,
         linie: x.line,
         kurs: x.kurs,
         richtung: x.richtung,

@@ -60,7 +60,7 @@ async function addColumn(table, column, def) {
 
 const DROP_TABLES = [
   'sessions', 'activity', 'inactivity', 'strafzeiten', 'assignments', 'signups',
-  'dutys', 'shifts', 'news', 'linien', 'standorte', 'settings', 'users',
+  'dutys', 'fahrten', 'shifts', 'news', 'linien', 'standorte', 'settings', 'users',
   'tickets', 'ticket_messages', 'connections', 'messages', 'avatar_cache',
   'fahrtausfaelle', 'notifications', 'announcements', 'fahrplan_cache', 'channels'
 ];
@@ -186,6 +186,21 @@ async function initOnce() {
       license_id INTEGER REFERENCES linien(id),
       note TEXT,
       sort INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS fahrten (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      duty_id INTEGER NOT NULL REFERENCES dutys(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL DEFAULT 0,
+      linie TEXT,
+      kurs INTEGER,
+      richtung TEXT,
+      von TEXT,
+      nach TEXT,
+      start TEXT,
+      end TEXT
     )
   `);
 

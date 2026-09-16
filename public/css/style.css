@@ -379,6 +379,14 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 .plan-assign .unbesetzt { color: var(--text-muted); font-style: italic; font-size: .82rem; }
 .plan-reserve { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
 .plan-assign-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.plan-fahrten { margin-top: 6px; display: grid; gap: 2px; max-width: 640px; }
+.plan-fahrt { display: flex; align-items: center; gap: 8px; font-size: .76rem; line-height: 1.45; }
+.plan-fahrt-zeit { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text-strong); min-width: 86px; white-space: nowrap; }
+.plan-fahrt-linie { display: inline-block; min-width: 26px; text-align: center; background: var(--bg-soft); border-radius: 4px; padding: 0 4px; font-weight: 800; white-space: nowrap; }
+.plan-desc-note { white-space: pre-wrap; }
+.trip-list { margin-top: 4px; display: grid; gap: 1px; }
+.trip-mini { font-size: .74rem; color: var(--text-muted); line-height: 1.5; white-space: nowrap; }
+.trip-mini .trip-time { font-weight: 700; color: var(--text-strong); font-variant-numeric: tabular-nums; }
 .type-bus { color: var(--primary); }
 @media (max-width: 900px) {
   .plan-row { grid-template-columns: 100px 1fr; }

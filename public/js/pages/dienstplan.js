@@ -24,6 +24,12 @@ const DienstplanPage = {
         ? '🔄 Linienwechsel ' + d.wechsel_from_name + ' → ' + d.wechsel_to_name
         : '🛍️ ' + (d.standort || sig);
     const metaBits = [d.fahrzeug ? 'Fahrzeug ' + d.fahrzeug : '', d.license ? 'Lizenz ' + d.license : ''].filter(Boolean);
+    const fahrten = (d.fahrten || []).length
+      ? `<div class="plan-fahrten">${d.fahrten.map((f) => `
+          <div class="plan-fahrt"><span class="plan-fahrt-zeit">${esc(f.start ? fmtTime(f.start).slice(11, 16) : '')}–${esc(f.end ? fmtTime(f.end).slice(11, 16) : '')}</span>
+            <span class="plan-fahrt-linie">L${esc(f.linie)}</span> <b>Kurs ${esc(f.kurs)}</b>
+            <span class="muted">${esc(f.richtung)}</span> · ${esc(f.von)} → ${esc(f.nach)}</div>`).join('')}</div>`
+      : (d.note ? `<div class="plan-desc-note">${esc(d.note)}</div>` : '');
 
     return `
       <div class="plan-row" style="border-left:3px solid ${accent}" data-duty="${d.id}">
@@ -31,7 +37,7 @@ const DienstplanPage = {
         <div class="plan-time">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</div>
         <div class="plan-main">
           <b>${label}</b>
-          <div class="plan-desc">${metaBits.join(' · ')}${d.note ? '<br/>' + esc(d.note) : ''}</div>
+          <div class="plan-desc">${metaBits.join(' · ')}${fahrten ? '<br/>' + fahrten : ''}</div>
         </div>
         <div class="plan-license">${d.license ? `<span class="badge badge-blue">${esc(d.license)}</span>` : ''}</div>
         <div class="plan-assign">
