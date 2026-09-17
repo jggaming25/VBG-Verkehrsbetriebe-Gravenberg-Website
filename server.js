@@ -410,6 +410,7 @@ app.get('/api/anmeldung', requireAuth, async (req, res) => {
       preferred_duty_ids: (s.preferred_duty_ids || '').split(',').filter(Boolean).map((x) => parseInt(x, 10)),
       preferred_ks_role: s.preferred_ks_role || '',
       volunteer_strafe: !!s.volunteer_strafe,
+      strafe_abarbeitung: !!s.strafe_abarbeitung,
       preferred_standort_id: s.preferred_standort_id || null,
       available_start: s.available_start || '', available_end: s.available_end || '',
       needs_senior: !!s.needs_senior, note: s.note || '', status: s.status
@@ -435,6 +436,7 @@ app.post('/api/anmeldung', requireAuth, async (req, res) => {
   const preferred_duty_ids = [...new Set(wished.filter((x) => validSet.has(x)))].slice(0, maxWish);
   const preferred_ks_role = String(req.body.preferred_ks_role || '').slice(0, 60);
   const volunteer_strafe = req.body.volunteer_strafe ? 1 : 0;
+  const strafe_abarbeitung = req.body.strafe_abarbeitung ? 1 : 0;
   const preferred_standort_id = parseInt(req.body.preferred_standort_id || '0', 10) || null;
   const available_start = String(req.body.available_start || '').slice(0, 20);
   const available_end = String(req.body.available_end || '').slice(0, 20);
@@ -444,15 +446,15 @@ app.post('/api/anmeldung', requireAuth, async (req, res) => {
   const existing = await db.get(`SELECT id FROM signups WHERE shift_id = ? AND user_id = ?`, [shiftId, req.user.id]);
   if (existing) {
     await db.run(`
-      UPDATE signups SET preferred_duty_ids = ?, preferred_ks_role = ?, volunteer_strafe = ?, preferred_standort_id = ?,
+      UPDATE signups SET preferred_duty_ids = ?, preferred_ks_role = ?, volunteer_strafe = ?, strafe_abarbeitung = ?, preferred_standort_id = ?,
       available_start = ?, available_end = ?, needs_senior = ?, note = ?, updated_at = datetime('now')
       WHERE id = ?`,
-      [preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, preferred_standort_id, available_start, available_end, needs_senior, note, existing.id]);
+      [preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note, existing.id]);
   } else {
     await db.run(`
-      INSERT INTO signups (shift_id, user_id, preferred_duty_ids, preferred_ks_role, volunteer_strafe, preferred_standort_id, available_start, available_end, needs_senior, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [shiftId, req.user.id, preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, preferred_standort_id, available_start, available_end, needs_senior, note]);
+      INSERT INTO signups (shift_id, user_id, preferred_duty_ids, preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [shiftId, req.user.id, preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note]);
   }
   res.json({ ok: true });
 });
@@ -622,12 +624,33 @@ app.post('/api/admin/assignments', requireAuth, requireScheduler, async (req, re
   const status = req.body.status === 'bestaetigt' ? 'bestaetigt' : 'vorgeschlagen';
   const duty = await db.get(`SELECT * FROM dutys WHERE id = ?`, [dutyId]);
   if (!duty) return res.status(400).json({ error: 'Dienst nicht gefunden.' });
-  await db.run(`DELETE FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
+  const existing = await db.get(`SELECT * FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
   if (userId) {
     const u = await db.get(`SELECT * FROM users WHERE id = ? AND active = 1`, [userId]);
     if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
-    await db.run(`INSERT INTO assignments (duty_id, user_id, kind, status, source, assigned_by) VALUES (?, ?, ?, ?, 'manual', ?)`,
-      [dutyId, userId, kind, status, req.user.id]);
+    if (duty.license_id) {
+      const licenses = (u.licenses || '').split(',').filter(Boolean).map((x) => parseInt(x, 10));
+      if (!licenses.includes(duty.license_id)) return res.status(400).json({ error: 'Dieser Nutzer hat nicht die erforderliche Lizenz fÃ¼r diesen Dienst.' });
+    }
+    const signup = await db.get(`SELECT * FROM signups WHERE shift_id = ? AND user_id = ?`, [duty.shift_id, userId]);
+    if (!dutyWithinAvailability(duty, signup)) return res.status(400).json({ error: 'Der Dienst liegt auÃŸerhalb des Anmeldungszeitraums dieses Nutzers.' });
+    let grund = null;
+    const shouldWorkOff = kind === 'haupt' && status === 'bestaetigt' && duty.type !== 'strafe' && signup && signup.strafe_abarbeitung;
+    if (shouldWorkOff && !(existing && existing.user_id === userId && String(existing.grund || '').includes('Strafe-Abarbeitung'))) {
+      const hours = dutyHours(duty.start, duty.end);
+      if (hours > 0) {
+        const reasons = [];
+        const covered = await coverStrafe(userId, hours, reasons);
+        grund = covered > 0
+          ? 'Strafe-Abarbeitung: ' + covered + ' h abgezogen'
+          : 'Strafe-Abarbeitung gewünscht, keine offene Strafzeit';
+      }
+    }
+    await db.run(`DELETE FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
+    await db.run(`INSERT INTO assignments (duty_id, user_id, kind, status, source, grund, assigned_by) VALUES (?, ?, ?, ?, 'manual', ?, ?)`,
+      [dutyId, userId, kind, status, grund, req.user.id]);
+  } else {
+    await db.run(`DELETE FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
   }
   res.json({ ok: true });
 });
@@ -665,6 +688,31 @@ function dutyHours(start, end) {
   const b = new Date(end + ':00');
   if (isNaN(a) || isNaN(b) || b <= a) return 0;
   return Math.round(((b - a) / 3600000) * 10) / 10;
+}
+
+function dutyWithinAvailability(duty, signup) {
+  if (!signup || (!signup.available_start && !signup.available_end) || !duty.start || !duty.end) return true;
+  const start = new Date(String(duty.start).length === 16 ? duty.start + ':00' : duty.start);
+  const end = new Date(String(duty.end).length === 16 ? duty.end + ':00' : duty.end);
+  if (isNaN(start) || isNaN(end)) return false;
+  if (signup.available_start) {
+    const availStart = new Date(String(signup.available_start).length === 16 ? signup.available_start + ':00' : signup.available_start);
+    if (!isNaN(availStart) && start < availStart) return false;
+  }
+  if (signup.available_end) {
+    const availEnd = new Date(String(signup.available_end).length === 16 ? signup.available_end + ':00' : signup.available_end);
+    if (!isNaN(availEnd) && end > availEnd) return false;
+  }
+  return true;
+}
+
+function afterShiftActivityWindow(duty, now = new Date()) {
+  if (!duty) return false;
+  const shiftEnd = duty.shift_date && duty.shift_end ? duty.shift_date + 'T' + duty.shift_end : duty.end;
+  if (!shiftEnd) return false;
+  const end = new Date(String(shiftEnd).length === 16 ? shiftEnd + ':00' : shiftEnd);
+  if (isNaN(end)) return false;
+  return now.getTime() > end.getTime() + 60 * 60000;
 }
 
 app.get('/api/admin/activity-list', requireAuth, requireScheduler, async (req, res) => {
@@ -763,12 +811,16 @@ app.get('/api/activity-status', requireAuth, async (req, res) => {
   const nowIso = new Date();
   if (!shiftId) return res.json({ ok: true, noDuty: true, now: nowIso.toISOString() });
   const asg = await db.get(`
-    SELECT a.id, a.duty_id, d.code, d.start, d.end
+    SELECT a.id, a.duty_id, d.code, d.start, d.end, s.date AS shift_date, s.time_end AS shift_end
     FROM assignments a
     JOIN dutys d ON d.id = a.duty_id
+    JOIN shifts s ON s.id = d.shift_id
     WHERE a.user_id = ? AND a.kind = 'haupt' AND a.status = 'bestaetigt' AND d.shift_id = ?
     ORDER BY d.start DESC LIMIT 1`, [req.user.id, shiftId]);
   if (!asg) return res.json({ ok: true, noDuty: true, now: nowIso.toISOString() });
+  if (afterShiftActivityWindow(asg, nowIso)) {
+    return res.json({ ok: true, windowClosed: true, now: nowIso.toISOString(), duty: { id: asg.duty_id, code: asg.code, start: asg.start, end: asg.end } });
+  }
   const fahrten = await db.all(`SELECT * FROM fahrten WHERE duty_id = ? ORDER BY seq`, [asg.duty_id]);
   const prog = drivingProgress(fahrten, nowIso);
   const signed = await db.get(
@@ -786,10 +838,12 @@ app.get('/api/activity-status', requireAuth, async (req, res) => {
 app.post('/api/activity/sign', requireAuth, async (req, res) => {
   const dutyId = parseInt(req.body.duty_id, 10);
   const asg = await db.get(`
-    SELECT a.id, d.code FROM assignments a JOIN dutys d ON d.id = a.duty_id
+    SELECT a.id, d.code, d.start, d.end, s.date AS shift_date, s.time_end AS shift_end
+    FROM assignments a JOIN dutys d ON d.id = a.duty_id JOIN shifts s ON s.id = d.shift_id
     WHERE a.user_id = ? AND a.kind = 'haupt' AND a.status = 'bestaetigt' AND a.duty_id = ?`,
     [req.user.id, dutyId]);
   if (!asg) return res.status(403).json({ error: 'Kein bestÃ¤tigter Haupt-Dienst fÃ¼r diese Fahrt.' });
+  if (afterShiftActivityWindow(asg)) return res.status(403).json({ error: 'Die Activity-Anmeldung ist nur bis 60 Minuten nach Dienstende mÃ¶glich.' });
   const existing = await db.get(`SELECT id FROM activity WHERE user_id = ? AND duty_id = ?`, [req.user.id, dutyId]);
   if (existing) return res.status(400).json({ error: 'Du bist bereits fÃ¼r die Activity angemeldet.' });
   const fahrten = await db.all(`SELECT * FROM fahrten WHERE duty_id = ? ORDER BY seq`, [dutyId]);
@@ -919,6 +973,7 @@ app.get('/api/strafe', requireAuth, async (req, res) => {
 async function coverStrafe(userId, hours, out) {
   const entries = await db.all(`SELECT * FROM strafzeiten WHERE user_id = ? AND hours > covered ORDER BY created_at ASC`, [userId]);
   let remaining = hours;
+  let covered = 0;
   const reasons = [];
   for (const e of entries) {
     if (remaining <= 0) break;
@@ -926,10 +981,12 @@ async function coverStrafe(userId, hours, out) {
     if (take > 0) {
       await db.run(`UPDATE strafzeiten SET covered = covered + ? WHERE id = ?`, [take, e.id]);
       reasons.push((e.reason || 'Strafe') + ' (' + Math.round(take * 10) / 10 + ' h)');
+      covered = Math.round((covered + take) * 10) / 10;
       remaining = Math.round((remaining - take) * 10) / 10;
     }
   }
   out.push(...reasons);
+  return covered;
 }
 
 async function nextUpcomingShift(excludeShiftId) {
@@ -951,6 +1008,22 @@ app.post('/api/admin/strafe', requireAuth, requireScheduler, async (req, res) =>
   if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
   await db.run(`INSERT INTO strafzeiten (user_id, hours, reason, entered_by) VALUES (?, ?, ?, ?)`, [userId, hours, reason, req.user.id]);
   res.json({ ok: true });
+});
+
+app.post('/api/admin/strafe-adjust', requireAuth, requireScheduler, async (req, res) => {
+  const userId = parseInt(req.body.user_id, 10);
+  const hours = parseFloat(req.body.hours);
+  const action = req.body.action === 'subtract' ? 'subtract' : 'add';
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  if (!userId || !(hours > 0) || hours > 120) return res.status(400).json({ error: 'UngÃ¼ltige Eingabe.' });
+  const u = await db.get(`SELECT * FROM users WHERE id = ?`, [userId]);
+  if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
+  if (action === 'add') {
+    await db.run(`INSERT INTO strafzeiten (user_id, hours, reason, entered_by) VALUES (?, ?, ?, ?)`, [userId, hours, reason || 'Manuell erfasst', req.user.id]);
+    return res.json({ ok: true, changed_hours: hours });
+  }
+  const covered = await coverStrafe(userId, hours, []);
+  res.json({ ok: true, changed_hours: covered });
 });
 
 app.post('/api/admin/strafe-config', requireAuth, requireAdmin, async (req, res) => {

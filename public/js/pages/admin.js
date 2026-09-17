@@ -5,6 +5,7 @@ const AdminPage = {
 
   subs: [
     ['users', 'Nutzer'],
+    ['leitung', 'Leitung'],
     ['shifts', 'Shifts'],
     ['dienste', 'Dienste'],
     ['activity', 'Activity'],
@@ -35,6 +36,7 @@ const AdminPage = {
   async renderSub(body) {
     try {
       if (this.sub === 'users') return await this.usersView(body);
+      if (this.sub === 'leitung') return await this.leitungView(body);
       if (this.sub === 'shifts') return await this.shiftsView(body);
       if (this.sub === 'dienste') return await this.diensteView(body);
       if (this.sub === 'activity') return await this.activityAllView(body);
@@ -186,6 +188,64 @@ const AdminPage = {
           App.reload();
         } catch (err) { App.toast(err.message, 'error'); }
       });
+    });
+  },
+
+  /* ------------------------------ LEITUNG ------------------------------ */
+  async leitungView(body) {
+    const data = await API.get('/api/admin/users');
+    const users = data.users || [];
+    body.innerHTML = `
+      <div class="panel">
+        <div class="panel-head"><h2>Offene Strafzeit verwalten</h2></div>
+        <form class="form-grid" id="strafe-adjust-form">
+          <label class="field"><span class="field-label">Nutzer</span>
+            <select class="input" id="la-user" required>
+              <option value="">Nutzer auswählen</option>
+              ${users.filter((u) => u.active).map((u) => `<option value="${u.id}">${esc(u.display_name || u.username)} (${u.open_hours || 0} h offen)</option>`).join('')}
+            </select>
+          </label>
+          <label class="field"><span class="field-label">Stunden (h)</span><input class="input" id="la-hours" type="number" min="0.1" max="120" step="0.1" required/></label>
+          <label class="field"><span class="field-label">Grund</span><input class="input" id="la-reason" placeholder="z. B. manuell erfasst / abgearbeitet"/></label>
+          <div class="field" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" type="submit" data-action="add">Geben</button>
+            <button class="btn btn-danger" type="submit" data-action="subtract">Abziehen</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Strafzeit-Saldo</h2><span class="muted-sm">Minimum ist immer 0 h</span></div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Nutzer</th><th>Rolle</th><th>Offene Strafzeit</th></tr></thead>
+            <tbody>
+              ${users.map((u) => `
+                <tr>
+                  <td><b>${esc(u.display_name || u.username)}</b> <span class="muted-sm">@${esc(u.username)}</span></td>
+                  <td>${esc(roleLabel(u.role))}</td>
+                  <td class="num">${u.open_hours ? u.open_hours + ' h' : '0 h'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    let action = 'add';
+    body.querySelectorAll('#strafe-adjust-form button[type="submit"]').forEach((b) => {
+      b.addEventListener('click', () => { action = b.dataset.action; });
+    });
+    body.querySelector('#strafe-adjust-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await API.post('/api/admin/strafe-adjust', {
+          user_id: parseInt(body.querySelector('#la-user').value, 10),
+          hours: parseFloat(body.querySelector('#la-hours').value),
+          reason: body.querySelector('#la-reason').value,
+          action
+        });
+        App.toast(action === 'subtract' ? `${r.changed_hours || 0} h abgezogen.` : 'Strafzeit erfasst.');
+        App.reload();
+      } catch (err) { App.toast(err.message, 'error'); }
     });
   },
 

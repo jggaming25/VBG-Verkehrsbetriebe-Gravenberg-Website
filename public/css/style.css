@@ -367,7 +367,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 .plan-section:last-child { border-bottom: 0; }
 .plan-section-head { padding: 12px 20px; background: var(--bg-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .85rem; font-weight: 800; }
 .plan-section-head small { font-weight: 600; color: var(--text-muted); }
-.plan-row { display: grid; grid-template-columns: 110px 120px minmax(160px, 1fr) 130px 90px; gap: 4px; align-items: center; padding: 10px 20px; border-top: 1px solid var(--border); }
+.plan-row { display: grid; grid-template-columns: 110px 120px minmax(180px, 1fr) 110px minmax(260px, 360px); gap: 8px; align-items: center; padding: 10px 20px; border-top: 1px solid var(--border); }
 .plan-row:first-child { border-top: 0; }
 .plan-row:hover { background: var(--surface-hover); }
 .plan-code { font-family: var(--font-head); font-weight: 800; font-size: .9rem; }
@@ -375,10 +375,12 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 .plan-main { font-size: .9rem; }
 .plan-main .plan-desc { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
 .plan-license { font-size: .75rem; color: var(--text-muted); }
-.plan-assign { text-align: left; }
+.plan-assign { text-align: left; min-width: 0; }
 .plan-assign .unbesetzt { color: var(--text-muted); font-style: italic; font-size: .82rem; }
 .plan-reserve { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
 .plan-assign-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.plan-assign-actions .input { flex: 1 1 170px; min-width: 150px; }
+.plan-assign-actions .btn { flex: 0 0 auto; }
 
 /* Fahrten-Tabelle unter dem Dienst-Kopf */
 .plan-fahrten-wrap { border-top: 1px dashed var(--border); background: var(--bg-soft); padding: 8px 20px 12px; }
@@ -400,6 +402,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 
 /* Activity-Frame (Dienstplan) + Admin-Statistik */
 .activity-body { padding: 4px 20px 16px; display: grid; gap: 10px; }
+.activity-card { margin-top: 14px; padding: 14px 16px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 8px; }
+.activity-card h3 { margin: 0; font-size: .95rem; }
 .activity-progress { display: grid; gap: 6px; max-width: 620px; }
 .progress { height: 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .progress-bar { height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); transition: width .3s; }

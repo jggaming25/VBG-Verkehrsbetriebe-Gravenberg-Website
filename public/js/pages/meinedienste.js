@@ -63,9 +63,66 @@ const MeineDienstePage = {
                     </tbody>
                   </table>
                 </div>
+                <div class="activity-body" data-activity-shift="${esc(sid)}"></div>
               </div>`;
           }).join('')
         : '<div class="empty">Dir wurde bisher kein Dienst zugeteilt.</div>'}
     `;
+    await this.renderActivity(container);
+  },
+
+  async renderActivity(container) {
+    const frames = Array.from(container.querySelectorAll('[data-activity-shift]'));
+    await Promise.all(frames.map(async (frame) => {
+      const shiftId = frame.dataset.activityShift;
+      let st;
+      try {
+        st = await API.get('/api/activity-status?shift_id=' + shiftId);
+      } catch (e) {
+        frame.innerHTML = '<div class="empty">Activity-Status nicht abrufbar: ' + esc(e.message) + '</div>';
+        return;
+      }
+      if (!st.ok || st.noDuty) {
+        frame.innerHTML = `
+          <div class="activity-card">
+            <h3>Activity</h3>
+            <p class="muted">Nach <b>60 % deiner reinen Fahrtzeit</b> kannst du dich für die Activity anmelden.</p>
+            <div class="empty">Kein bestätigter Haupt-Dienst in dieser Shift.</div>
+          </div>`;
+        return;
+      }
+      if (st.windowClosed) {
+        frame.innerHTML = `
+          <div class="activity-card">
+            <h3>Activity</h3>
+            <p class="muted">Die Activity-Anmeldung ist nur bis 60 Minuten nach Dienstende einsehbar.</p>
+          </div>`;
+        return;
+      }
+      const dr = st.driving || {};
+      const unlockStr = dr.atIso ? new Date(dr.atIso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
+      frame.innerHTML = `
+        <div class="activity-card">
+          <h3>Activity</h3>
+          <p class="muted">Nach <b>60 % deiner reinen Fahrtzeit</b> kannst du dich für die Activity anmelden. Sichtbar ist diese Anmeldung nur bis 60 Minuten nach Dienstende.</p>
+          <div class="activity-actions">
+            ${st.signed
+              ? '<span class="badge badge-green">Für die Activity angemeldet</span>'
+              : dr.reached
+                ? '<button class="btn btn-primary" data-act-sign>Für Activity anmelden</button>'
+                : `<button class="btn btn-primary" disabled>Für Activity anmelden</button><span class="muted act-lock">Freigabe ab <b>${esc(unlockStr || '60 % Fahrtzeit')}</b></span>`}
+          </div>
+        </div>`;
+      const btn = frame.querySelector('[data-act-sign]');
+      if (btn && st.duty) {
+        btn.addEventListener('click', async () => {
+          try {
+            await API.post('/api/activity/sign', { duty_id: st.duty.id });
+            App.toast('Für die Activity angemeldet.');
+            App.reload();
+          } catch (e) { App.toast(e.message, 'error'); }
+        });
+      }
+    }));
   }
 };

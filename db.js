@@ -212,6 +212,7 @@ async function initOnce() {
       preferred_duty_ids TEXT NOT NULL DEFAULT '',
       preferred_ks_role TEXT DEFAULT '',
       volunteer_strafe INTEGER NOT NULL DEFAULT 0,
+      strafe_abarbeitung INTEGER NOT NULL DEFAULT 0,
       preferred_standort_id INTEGER REFERENCES standorte(id),
       available_start TEXT,
       available_end TEXT,
@@ -222,6 +223,7 @@ async function initOnce() {
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+  await addColumn('signups', 'strafe_abarbeitung', 'INTEGER NOT NULL DEFAULT 0');
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS assignments (

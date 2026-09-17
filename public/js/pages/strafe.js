@@ -44,7 +44,10 @@ const StrafePage = {
             <label class="field"><span class="field-label">Grund</span>
               <textarea class="input" id="strafe-reason" placeholder="z. B. unentschuldigtes Fehlen, Verspätung …"></textarea>
             </label>
-            <button class="btn btn-primary btn-sm" type="submit">Strafzeit erfassen</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" type="submit" data-action="add">Geben</button>
+              <button class="btn btn-danger btn-sm" type="submit" data-action="subtract">Abziehen</button>
+            </div>
           </form>
           <div class="form-row">
             <label class="field" style="margin-bottom:0">
@@ -118,15 +121,20 @@ const StrafePage = {
     `;
 
     if (canManage) {
+      let adjustAction = 'add';
+      container.querySelectorAll('#strafe-add-form button[type="submit"]').forEach((b) => {
+        b.addEventListener('click', () => { adjustAction = b.dataset.action; });
+      });
       container.querySelector('#strafe-add-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
-          await API.post('/api/admin/strafe', {
+          const r = await API.post('/api/admin/strafe-adjust', {
             user_id: parseInt(container.querySelector('#strafe-user').value, 10),
             hours: parseFloat(container.querySelector('#strafe-hours').value),
-            reason: container.querySelector('#strafe-reason').value
+            reason: container.querySelector('#strafe-reason').value,
+            action: adjustAction
           });
-          App.toast('Strafzeit erfasst.');
+          App.toast(adjustAction === 'subtract' ? `${r.changed_hours || 0} h abgezogen.` : 'Strafzeit erfasst.');
           App.reload();
         } catch (err) { App.toast(err.message, 'error'); }
       });

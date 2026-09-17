@@ -89,7 +89,7 @@ const DienstplanPage = {
             : '<span class="unbesetzt">UNBESETZT – keine Person zugeteilt</span>'}
           ${canManage ? `
             <div class="plan-assign-actions">
-              <select class="input ${d.license_id && !selected ? 'warn' : ''}" data-user="${d.id}" style="max-width:170px;padding:5px 8px;font-size:.8rem">
+              <select class="input ${d.license_id && !selected ? 'warn' : ''}" data-user="${d.id}" style="padding:5px 8px;font-size:.8rem">
                 <option value="">– nicht zugeteilt –</option>
                 ${eligible.map((u) => `<option value="${u.id}" ${String(u.id) === String(selected) ? 'selected' : ''}>${esc(u.display_name || u.username)}</option>`).join('')}
               </select>
@@ -122,7 +122,7 @@ const DienstplanPage = {
     const strafeDuties = duties.filter((d) => d.type === 'strafe').sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
     container.innerHTML = `
-      <div class="page-head"><h1>Dienstplan</h1><p>Der Schichtplan mit allen Diensten, einzelnen Fahrten und der Activity-Anmeldung.</p></div>
+      <div class="page-head"><h1>Dienstplan</h1><p>Der Schichtplan mit allen Diensten und einzelnen Fahrten.</p></div>
 
       <div class="panel">
         <div class="panel-head"><h2>Shift auswählen</h2></div>
@@ -135,8 +135,6 @@ const DienstplanPage = {
               </label>`).join('')}
           </div>` : '<div class="empty">Noch keine Shifts vorhanden.</div>'}
       </div>
-
-      ${data.shift ? `<div class="panel" id="activity-frame"></div>` : ''}
 
       ${data.shift ? `
         <div class="plan-sheet">
@@ -154,7 +152,6 @@ const DienstplanPage = {
               <span>Leitung</span>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto">
                 <span class="muted" style="font-weight:600;align-self:center;font-size:.8rem">Sign-Up: ${data.signup_state === 'offen' ? 'offen' : data.signup_state === 'geschlossen' ? 'geschlossen' : data.signup_state === 'vorbei' ? 'vorbei' : 'Entwurf'}</span>
-                <button class="btn btn-soft btn-sm" id="btn-autoshift">Autoshift (Vorschläge)</button>
                 <button class="btn btn-primary btn-sm" id="btn-confirm">Alle Vorschläge bestätigen</button>
               </div>
             </div>` : ''}
@@ -206,19 +203,7 @@ const DienstplanPage = {
       });
     });
 
-    this.renderActivity(container);
-
     if (canManage) {
-      const btnAuto = container.querySelector('#btn-autoshift');
-      if (btnAuto) btnAuto.addEventListener('click', async () => {
-        if (!confirm('Autoshift starten? Vorschläge werden neu erzeugt, bestätigte Einteilungen bleiben erhalten.')) return;
-        try {
-          await API.post('/api/admin/autoshift', { shift_id: this.state.shiftId });
-          App.toast('Autoshift abgeschlossen.');
-          App.reload();
-        } catch (e) { App.toast(e.message, 'error'); }
-      });
-
       const btnConfirm = container.querySelector('#btn-confirm');
       if (btnConfirm) btnConfirm.addEventListener('click', async () => {
         try {
@@ -251,69 +236,6 @@ const DienstplanPage = {
             App.reload();
           } catch (e) { App.toast(e.message, 'error'); }
         });
-      });
-    }
-  },
-
-  /* Activity-Frame: 60 %-Regel (nur reine Fahrzeit) + Anmelde-Button */
-  async renderActivity(container) {
-    const frame = container.querySelector('#activity-frame');
-    if (!frame || !this.state.shiftId) return;
-    let st;
-    try {
-      st = await API.get('/api/activity-status?shift_id=' + this.state.shiftId);
-    } catch (e) {
-      frame.innerHTML = '<div class="panel-head"><h2>Activity</h2></div><div class="empty">Status nicht abrufbar: ' + esc(e.message) + '</div>';
-      return;
-    }
-
-    const inner = () => {
-      if (!st.ok || st.noDuty) {
-        return `
-          <div class="panel-head"><h2>Activity</h2></div>
-          <div class="activity-body">
-            <p class="muted">Nach <b>60 % deiner reinen Fahrtzeit</b> (Fahrzeiten von–bis, ohne Standzeiten) kannst du dich für die Activity anmelden.</p>
-            <div class="empty">Kein eigener bestätigter Haupt-Dienst in dieser Shift – hier erscheint dein Fortschritt.</div>
-          </div>`;
-      }
-      const tij = st.duty;
-      const dr = st.driving;
-      const unlockStr = dr.atIso ? new Date(dr.atIso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
-      const tripName = dr.atTrip
-        ? (String(dr.atTrip.linie).match(/^\d+$/) ? 'L' + dr.atTrip.linie : dr.atTrip.linie) + ' (' + String(dr.atTrip.richtung === 'zurück' ? '←' : '→') + ' ' + dr.atTrip.von + ' → ' + dr.atTrip.nach + ')'
-        : '';
-      return `
-        <div class="panel-head"><h2>Activity</h2>
-          <span class="muted-sm">Dienst ${esc(tij.code)} · ${tij.start ? esc(fmtTime(tij.start)) + ' – ' + esc(fmtTime(tij.end)) : ''}</span>
-        </div>
-        <div class="activity-body">
-          <p class="muted">Nach <b>60 % deiner reinen Fahrtzeit</b> (nur Fahrzeiten, keine Standzeiten) kannst du dich für die Activity anmelden.</p>
-          ${tij.anzahl_fahrten === 0 ? '<div class="empty">Dieser Dienst hat keine Fahrtenliste – bitte Dienste neu generieren.</div>' : `
-            <div class="activity-progress">
-              <div class="progress"><div class="progress-bar" style="width:${Number(dr.pct) || 0}%"></div></div>
-              <div class="progress-label">Reine Fahrzeit: <b>${dr.doneMin} / ${dr.totalMin} min</b> (${dr.pct} %)${dr.reached ? ' · <b class="ok">60 % erreicht!</b>' : ''}</div>
-            </div>
-            <div class="activity-actions">
-              ${st.signed
-                ? '<div><span class="badge badge-green">Für die Activity angemeldet</span></div>'
-                : dr.reached
-                  ? '<button class="btn btn-primary" id="act-sign">Für Activity anmelden</button>'
-                  : `<button class="btn btn-primary" id="act-sign" disabled>Für Activity anmelden</button>
-                     <div class="muted act-lock"><span class="lock">🔒</span> Freigabe ab <b>${esc(unlockStr)}</b>${tripName ? '<br/>bei Fahrt <b>' + esc(tripName) + '</b>' : ''}</div>`}
-            </div>`}
-        </div>`;
-    };
-
-    frame.innerHTML = inner();
-
-    const btn = frame.querySelector('#act-sign');
-    if (btn && !btn.disabled && st.duty) {
-      btn.addEventListener('click', async () => {
-        try {
-          await API.post('/api/activity/sign', { duty_id: st.duty.id });
-          App.toast('Für die Activity angemeldet.');
-          App.reload();
-        } catch (e) { App.toast(e.message, 'error'); }
       });
     }
   }

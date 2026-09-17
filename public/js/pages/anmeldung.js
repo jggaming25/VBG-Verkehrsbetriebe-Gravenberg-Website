@@ -105,6 +105,10 @@ const AnmeldungPage = {
               <input type="checkbox" id="needs-senior" ${mySignup && mySignup.needs_senior ? 'checked' : ''}/>
               <span>Senior-Begleitung benötigt</span>
             </label>
+            <label class="check-line">
+              <input type="checkbox" id="strafe-abarbeitung" ${mySignup && mySignup.strafe_abarbeitung ? 'checked' : ''}/>
+              <span>Diesen Dienst als Strafe-Abarbeitung werten</span>
+            </label>
             <label class="field">
               <span class="field-label">Anmerkung</span>
               <textarea class="input" id="signup-note" placeholder="Optionale Anmerkung zur Shift …">${esc(mySignup ? mySignup.note : '')}</textarea>
@@ -118,7 +122,7 @@ const AnmeldungPage = {
         ${data.signups.length ? `
           <div class="table-wrap">
             <table class="table">
-              <thead><tr><th>Shift</th><th>Datum / Zeit</th><th>Wunsch</th><th>Verfügbar</th><th>Strafe</th><th>Senior</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Shift</th><th>Datum / Zeit</th><th>Wunsch</th><th>Verfügbar</th><th>Strafe</th><th>Abarbeitung</th><th>Senior</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 ${data.signups.map((s) => {
                   const duties = data.duties_by_shift[s.shift_id] || [];
@@ -133,6 +137,7 @@ const AnmeldungPage = {
                     <td class="muted-sm">${wishNames.length ? wishNames.map((w, i) => (i + 1) + '. ' + esc(w)).join('<br/>') : 'Keine Präferenz'}</td>
                     <td class="muted-sm">${s.available_start ? esc(fmtTime(s.available_start)) + ' – ' + esc(fmtTime(s.available_end)) : 'Ganztags'}</td>
                     <td class="muted-sm">${s.volunteer_strafe ? 'Ja' : 'Nein'}</td>
+                    <td class="muted-sm">${s.strafe_abarbeitung ? 'Ja' : 'Nein'}</td>
                     <td class="muted-sm">${s.needs_senior ? 'Ja' : 'Nein'}</td>
                     <td><span class="badge badge-green">Angemeldet</span></td>
                     <td>${s.shift_status === 'published' ? `<button class="btn btn-danger btn-xs" data-unregister="${s.shift_id}">Abmelden</button>` : ''}</td>
@@ -172,6 +177,7 @@ const AnmeldungPage = {
           preferred_standort_id: standort ? parseInt(standort.value, 10) : null,
           available_start: form.querySelector('#avail-start').value,
           available_end: form.querySelector('#avail-end').value,
+          strafe_abarbeitung: form.querySelector('#strafe-abarbeitung').checked,
           needs_senior: form.querySelector('#needs-senior').checked,
           note: form.querySelector('#signup-note').value
         };
