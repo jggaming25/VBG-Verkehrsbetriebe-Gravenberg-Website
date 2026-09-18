@@ -28,13 +28,14 @@ const MeineDienstePage = {
       (byShift[a.shift_id] = byShift[a.shift_id] || []).push(a);
     }
 
-    const desc = (a) => {
-      if (a.type === 'bus') return '🚌 ' + ((a.linien_unik && a.linien_unik.length)
-        ? a.linien_unik.map((l) => this.linieLabel(l)).join(' → ')
-        : (a.linie || a.code));
-      if (a.type === 'wechsel') return '🔄 Linienwechsel ' + (a.wechsel_from_name || '?') + ' → ' + (a.wechsel_to_name || '?');
-      return '🛍️ ' + (a.standort || 'Kundenservice-Strafe');
+    const art = (a) => {
+      if (a.type === 'bus') return (a.linien_unik && a.linien_unik.length)
+        ? a.linien_unik.map((l) => this.linieLabel(l)).join(', ')
+        : (a.linie || a.code);
+      if (a.type === 'wechsel') return 'Linienwechsel ' + (a.wechsel_from_name || '?') + ' → ' + (a.wechsel_to_name || '?');
+      return a.standort || 'Kundenservice-Strafe';
     };
+    const iconFor = (a) => a.type === 'bus' ? '🚌' : (a.type === 'wechsel' ? '🔄' : '🛍️');
 
     container.innerHTML = `
       <div class="page-head"><h1>Meine Dienste</h1><p>Deine fest eingeteilten Dienste im Überblick – mit allen einzelnen Fahrten.</p></div>
@@ -46,7 +47,7 @@ const MeineDienstePage = {
               <div class="panel">
                 <div class="panel-head">
                   <h2>${esc(first.shift_title)}</h2>
-                  <span class="muted-sm">${esc(fmtDate(first.shift_date))}</span>
+                  <span class="muted-sm">${esc(fmtDateShort(first.shift_date))}</span>
                 </div>
                 <div class="table-wrap">
                   <table class="table">
@@ -54,8 +55,8 @@ const MeineDienstePage = {
                     <tbody>
                       ${list.map((a) => `
                         <tr>
-                          <td><b>${esc(a.code)}</b></td>
-                          <td>${desc(a)}</td>
+                          <td><b>${esc(iconFor(a))} Dienst ${esc(a.code)}</b></td>
+                          <td>${esc(art(a))}</td>
                           <td class="num">${a.start ? esc(fmtTime(a.start)) + ' – ' + esc(fmtTime(a.end)) : '–'}</td>
                           <td>${a.type === 'bus' ? this.fahrtenHtml(a.fahrten) : '<span class="muted">–</span>'}</td>
                           <td>${a.kind === 'reserve'

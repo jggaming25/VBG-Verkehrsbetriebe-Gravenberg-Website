@@ -295,6 +295,10 @@ img { max-width: 100%; }
 .panel-head h2 { margin: 0; }
 .panel-sub { color: var(--text-muted); font-size: .85rem; margin-bottom: 14px; }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+
+.act-preview { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.act-preview-item { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: .85rem; }
+.act-preview-item .muted-sm { margin-left: auto; }
 .stat {
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   padding: 22px; box-shadow: var(--shadow); text-align: center;
@@ -394,10 +398,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 .plan-section:last-child { border-bottom: 0; }
 .plan-section-head { padding: 12px 20px; background: var(--bg-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .85rem; font-weight: 800; }
 .plan-section-head small { font-weight: 600; color: var(--text-muted); }
-.plan-row { display: grid; grid-template-columns: 110px 120px minmax(180px, 1fr) 110px minmax(260px, 360px); gap: 8px; align-items: center; padding: 10px 20px; border-top: 1px solid var(--border); }
+.plan-row { display: grid; grid-template-columns: 120px minmax(200px, 1fr) 110px minmax(260px, 360px); gap: 8px; align-items: center; padding: 10px 20px; border-top: 1px solid var(--border); }
 .plan-row:first-child { border-top: 0; }
 .plan-row:hover { background: var(--surface-hover); }
-.plan-code { font-family: var(--font-head); font-weight: 800; font-size: .9rem; }
 .plan-time { font-variant-numeric: tabular-nums; font-size: .82rem; color: var(--text-muted); white-space: nowrap; }
 .plan-main { font-size: .9rem; }
 .plan-main .plan-desc { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
@@ -456,8 +459,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 .type-bus { color: var(--primary); }
 @media (max-width: 900px) {
   .plan-row { grid-template-columns: 110px 1fr; }
-  .plan-code { grid-column: 1; }
-  .plan-time { grid-column: 2; text-align: right; }
+  .plan-time { grid-column: 1; text-align: left; }
+  .plan-license { display: none; }
   .plan-main, .plan-assign { grid-column: 1 / -1; }
 }
 

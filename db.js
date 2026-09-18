@@ -230,6 +230,7 @@ async function initOnce() {
   await addColumn('signups', 'reserve_start', 'TEXT');
   await addColumn('signups', 'reserve_end', 'TEXT');
   await addColumn('signups', 'reserve_reason', 'TEXT');
+  await addColumn('signups', 'preferred_standort2_id', 'INTEGER');
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS assignments (
@@ -308,6 +309,16 @@ async function initOnce() {
     )
   `);
   await client.execute(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, id)`);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS wipe_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      confirmed_by TEXT NOT NULL DEFAULT '',
+      executed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
 
   const settingsDefaults = {
     meldung_active: '0',

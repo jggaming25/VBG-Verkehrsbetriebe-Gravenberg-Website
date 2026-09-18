@@ -65,12 +65,16 @@ const DienstplanPage = {
     const eligible = (data.users || []).filter((u) => !d.license_id || (u.licenses || []).includes(d.license_id));
     const selected = haupt ? haupt.user_id : (reserve ? reserve.user_id : '');
 
+    const linienList = d.type === 'bus' && d.linien_unik && d.linien_unik.length
+      ? d.linien_unik.map((l) => this.linieLabel(l))
+      : [];
     const label = d.type === 'bus'
-      ? '🚌 <b>' + esc(d.linien_unik && d.linien_unik.length ? d.linien_unik.map((l) => this.linieLabel(l)).join(' → ') : this.linieLabel(d.linie)) + '</b>'
+      ? '🚌 <b>Dienst ' + esc(d.code) + '</b>'
       : d.type === 'wechsel'
-        ? '🔄 Linienwechsel ' + esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name)
-        : '🛍️ ' + (d.standort || sig);
-    const metaBits = [d.fahrzeug ? 'Fahrzeug ' + d.fahrzeug : '', d.license ? 'Lizenz ' + d.license : ''].filter(Boolean);
+        ? '🔄 <b>Dienst ' + esc(d.code) + '</b> · Linienwechsel ' + esc(d.wechsel_from_name || '?') + ' → ' + esc(d.wechsel_to_name || '?')
+        : '🛍️ <b>Dienst ' + esc(d.code) + '</b> · ' + (d.standort || sig);
+    const metaBits = [d.type === 'bus' && linienList.length ? 'Linien: ' + linienList.join(', ') : '',
+      d.fahrzeug ? 'Fahrzeug ' + d.fahrzeug : '', d.license ? 'Lizenz ' + d.license : ''].filter(Boolean);
     const sum = d.type === 'bus' ? this.summary(d) : '';
     if (sum) metaBits.push(sum);
 
@@ -80,7 +84,6 @@ const DienstplanPage = {
 
     return `
       <div class="plan-row" style="border-left:3px solid ${accent}" data-duty="${d.id}">
-        <div class="plan-code">${esc(d.code)}</div>
         <div class="plan-time">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</div>
         <div class="plan-main">
           <b>${label}</b>
@@ -89,10 +92,10 @@ const DienstplanPage = {
         <div class="plan-license">${d.license ? `<span class="badge badge-blue">${esc(d.license)}</span>` : ''}</div>
         <div class="plan-assign">
           ${haupt
-            ? `${avatarHtml({ display_name: haupt.display_name || haupt.username, avatar: '' })}
-               <span>${esc(haupt.display_name || haupt.username)}</span>
+            ? `${isDeletedUser(haupt) ? '' : avatarHtml(haupt)}
+               <span>${isDeletedUser(haupt) ? '<span class="muted">Gelöscht</span>' : esc(userName(haupt) || '?')}</span>
                ${haupt.status !== 'bestaetigt' ? ' <span class="badge badge-amber">Vorschlag</span>' : ''}
-               ${reserve ? `<div class="plan-reserve">Reserve: ${esc(reserve.display_name || reserve.username)}</div>` : ''}`
+               ${reserve ? `<div class="plan-reserve">Reserve: ${isDeletedUser(reserve) ? '<span class="muted">Gelöscht</span>' : esc(userName(reserve) || '?')}</div>` : ''}`
             : '<span class="unbesetzt">UNBESETZT – keine Person zugeteilt</span>'}
           ${canManage ? `
             <div class="plan-assign-actions">
@@ -138,7 +141,7 @@ const DienstplanPage = {
             ${data.shifts.map((s) => `
               <label class="seg-label" data-shift="${s.id}">
                 <input type="radio" name="plan-shift" value="${s.id}" ${s.id === this.state.shiftId ? 'checked' : ''}/>
-                <span>${esc(s.title)} · ${esc(fmtDate(s.date))} ${esc(fmtTime(s.time_start))}${s.status !== 'published' ? ' <span class="badge badge-gray">Entwurf</span>' : ''}</span>
+                <span>${esc(s.title)} · ${esc(fmtDateShort(s.date))} ${esc(fmtTime(s.time_start))}${s.status !== 'published' ? ' <span class="badge badge-gray">Entwurf</span>' : ''}</span>
               </label>`).join('')}
           </div>` : '<div class="empty">Noch keine Shifts vorhanden.</div>'}
       </div>
@@ -187,7 +190,7 @@ const DienstplanPage = {
                         <td><b>${esc(d.code || '')}</b></td>
                         <td class="muted-sm">${d.start ? esc(fmtTime(d.start)) + ' – ' + esc(fmtTime(d.end)) : '–'}</td>
                         <td class="muted-sm">${esc(this.desc(d))}</td>
-                        <td>${esc(a.display_name || a.username)}</td>
+                        <td>${isDeletedUser(a) ? '<span class="muted">Gelöscht</span>' : esc(userName(a) || '?')}</td>
                         ${canManage ? `<td><button class="btn btn-danger btn-xs" data-unassign="${a.duty_id}">Leeren</button></td>` : ''}
                       </tr>`;
                     }).join('')}

@@ -49,6 +49,13 @@ function fmtDate(iso) {
   return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function fmtDateShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso.length === 10 ? iso + 'T00:00:00' : iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function fmtDateTime(dt) {
   if (!dt) return '';
   const d = new Date((dt.length === 16 ? dt + ':00' : dt));
@@ -73,8 +80,17 @@ function parseCSV(s) {
   return String(s || '').split(',').filter(Boolean).map((x) => parseInt(x, 10));
 }
 
+function isDeletedUser(u) {
+  return !!(u && (u.username || '').indexOf('geloescht_') === 0);
+}
+
+function userName(u) {
+  if (isDeletedUser(u)) return '';
+  return (u && (u.display_name || u.username)) || '';
+}
+
 function avatarHtml(user, sizeClass) {
-  const name = user.display_name || user.username || '?';
+  const name = userName(user) || '?';
   const ch = esc(name.trim().charAt(0).toUpperCase() || '?');
   if (user.avatar) {
     return `<span class="avatar ${sizeClass || ''}" style="background:transparent"><img src="${esc(user.avatar)}" alt=""/></span>`;

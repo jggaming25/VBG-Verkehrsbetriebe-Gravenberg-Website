@@ -17,6 +17,7 @@ const AdminPage = {
   ],
 
   async render(container) {
+    if (this._wipeT) { clearInterval(this._wipeT); this._wipeT = null; }
     container.innerHTML = `
       <div class="page-head"><h1>Admin</h1><p>Verwaltung von Nutzern, Shifts, Diensten und Inhalten.</p></div>
       <div class="subnav">
@@ -52,7 +53,7 @@ const AdminPage = {
 
   /* ------------------------------ NUTZER ------------------------------ */
   async usersView(body) {
-    const [usersRes, linienRes] = await Promise.all([API.get('/api/admin/users'), API.get('/api/admin/linien')]);
+    const [usersRes, linienRes, wipeRes] = await Promise.all([API.get('/api/admin/users'), API.get('/api/admin/linien'), API.get('/api/admin/wipe')]);
     const users = usersRes.users || [];
     const linien = linienRes.linien || [];
 
@@ -87,7 +88,7 @@ const AdminPage = {
             <tbody>
               ${users.map((u) => `
                 <tr data-uid="${u.id}">
-                  <td><b>${esc(u.display_name || u.username)}</b> <span class="muted-sm">@${esc(u.username)}</span></td>
+                  <td>${isDeletedUser(u) ? '<span class="muted">Gelöscht</span>' : '<b>' + esc(userName(u)) + '</b> <span class="muted-sm">@' + esc(u.username) + '</span>'}</td>
                   <td>${esc(roleLabel(u.role))}</td>
                   <td class="muted-sm">${esc(u.license_names || '–')}</td>
                   <td class="num">${u.open_hours ? u.open_hours + ' h' : '–'}</td>
@@ -104,6 +105,7 @@ const AdminPage = {
         </div>
       </div>
       <div id="user-edit-slot"></div>
+      <div id="wipe-slot"></div>
     `;
 
     body.querySelector('#create-user-form').addEventListener('submit', async (e) => {
@@ -189,6 +191,103 @@ const AdminPage = {
         } catch (err) { App.toast(err.message, 'error'); }
       });
     });
+
+    await this.renderWipe(body.querySelector('#wipe-slot'), wipeRes);
+  },
+
+  /* ------------------------------ WIPE (Risikobereich) ------------------------------ */
+  async renderWipe(slot, initial) {
+    if (!slot) return;
+    const paint = (w, executedNotice) => {
+      const me = App.user ? App.user.id : -1;
+      const req = w ? w.request : null;
+      const admins = (w && w.admins) || [];
+      if (executedNotice) {
+        slot.innerHTML = `
+          <div class="panel" style="border:1px solid var(--danger)">
+            <div class="panel-head"><h2>Alle Daten gelöscht</h2></div>
+            <p class="panel-sub">Alle Daten außer den Admin-Konten wurden entfernt. Durch einen Seitenwechsel wird dies bestätigt.</p>
+          </div>`;
+        return;
+      }
+      if (!req) {
+        slot.innerHTML = `
+          <div class="panel" style="border:1px solid var(--danger)">
+            <div class="panel-head"><h2>Risikobereich: Alle Daten löschen</h2></div>
+            <p class="panel-sub">Löscht alle Konten außer den Admin-Konten sowie alle Anmeldungen, Shifts, Dienste, Fahrten, Strafzeiten, Activity und Benachrichtigungen. Ausgeführt wird die Löschung erst, wenn <b>alle anderen Admins</b> hier bestätigt haben.</p>
+            <button class="btn btn-danger" id="wipe-init">Löschantrag stellen</button>
+          </div>`;
+        const b = slot.querySelector('#wipe-init');
+        b.addEventListener('click', async () => {
+          if (!confirm('Wirklich einen Löschantrag stellen? Alle Daten außer den Admin-Konten werden gelöscht, sobald alle anderen Admins bestätigt haben.')) return;
+          try {
+            await API.post('/api/admin/wipe', {});
+            App.toast('Löschantrag gestellt. Alle anderen Admins müssen im Admin-Bereich bestätigen.');
+            App.reload();
+          } catch (e) { App.toast(e.message, 'error'); }
+        });
+        return;
+      }
+      const isCreator = req.created_by === me;
+      const confirmed = req.confirmed_by || [];
+      const canConfirm = !isCreator && !confirmed.includes(me);
+      slot.innerHTML = `
+        <div class="panel" style="border:1px solid var(--danger)">
+          <div class="panel-head"><h2>Offener Löschantrag</h2><span class="badge badge-red">Aktiv</span></div>
+          <p class="panel-sub">Antrag erstellt <b>${esc(fmtDateTime(req.created_at))}</b> · Ersteller: <b>${esc(req.created_by_name || '–')}</b>. Die Löschung wird ausgeführt, sobald <b>alle anderen Admins</b> bestätigt haben.</p>
+          <div class="act-preview">
+            ${admins.map((a) => {
+              const ok = a.id === req.created_by || confirmed.includes(a.id);
+              const isMe = a.id === me;
+              return `<div class="act-preview-item">
+                <span>${esc(a.display_name || a.username)}${isMe ? ' <span class="muted-sm">(du)</span>' : ''}</span>
+                <span class="muted-sm">${ok ? '<span class="badge badge-green">Bestätigt</span>' : '<span class="badge badge-gray">Offen</span>'}</span>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${canConfirm ? '<button class="btn btn-danger" id="wipe-confirm">Löschung bestätigen</button>' : '<span class="muted-sm">Deine Bestätigung liegt bereits vor.</span>'}
+            ${isCreator ? '<button class="btn btn-ghost" id="wipe-cancel">Antrag zurückziehen</button>' : ''}
+          </div>
+        </div>`;
+      const cbtn = slot.querySelector('#wipe-confirm');
+      if (cbtn) {
+        cbtn.addEventListener('click', async () => {
+          if (!confirm('Löschung wirklich bestätigen? Alle Daten außer den Admin-Konten werden unwiderruflich gelöscht.')) return;
+          try {
+            const r = await API.post('/api/admin/wipe/confirm', {});
+            App.toast(r.executed ? 'Löschung ausgeführt.' : 'Bestätigung gespeichert.');
+            App.reload();
+          } catch (e) { App.toast(e.message, 'error'); }
+        });
+      }
+      const xbtn = slot.querySelector('#wipe-cancel');
+      if (xbtn) {
+        xbtn.addEventListener('click', async () => {
+          if (!confirm('Löschantrag zurückziehen?')) return;
+          try {
+            await API.post('/api/admin/wipe/cancel', {});
+            App.toast('Antrag zurückgezogen.');
+            App.reload();
+          } catch (e) { App.toast(e.message, 'error'); }
+        });
+      }
+    };
+    paint(initial);
+    if (this._wipeT) clearInterval(this._wipeT);
+    this._wipeT = setInterval(async () => {
+      if (!slot.isConnected) { clearInterval(this._wipeT); this._wipeT = null; return; }
+      let w = null;
+      try { w = await API.get('/api/admin/wipe'); } catch (e) { /* Polling darf nie stören */ }
+      if (!w) return;
+      if (initial && initial.request && !w.request) {
+        clearInterval(this._wipeT);
+        this._wipeT = null;
+        App.reload();
+        return;
+      }
+      paint(w);
+    }, 10000);
   },
 
   /* ------------------------------ LEITUNG ------------------------------ */
@@ -228,7 +327,7 @@ const AdminPage = {
             <tbody>
               ${users.map((u) => `
                 <tr>
-                  <td><b>${esc(u.display_name || u.username)}</b> <span class="muted-sm">@${esc(u.username)}</span></td>
+                  <td>${isDeletedUser(u) ? '<span class="muted">Gelöscht</span>' : '<b>' + esc(userName(u)) + '</b> <span class="muted-sm">@' + esc(u.username) + '</span>'}</td>
                   <td>${esc(roleLabel(u.role))}</td>
                   <td class="num">${u.open_hours ? u.open_hours + ' h' : '0 h'}</td>
                 </tr>`).join('')}
@@ -271,7 +370,7 @@ const AdminPage = {
             <tbody>
               ${items.length ? items.map((s) => `
                 <tr>
-                  <td><b>${esc(s.display_name || s.username)}</b></td>
+                  <td>${isDeletedUser(s) ? '<span class="muted">Gelöscht</span>' : '<b>' + esc(userName(s)) + '</b>'}</td>
                   <td class="muted-sm">${esc(s.shift_title)}<br/><span class="muted">${esc(fmtDate(s.shift_date))}</span></td>
                   <td class="muted-sm">${s.status === 'reserve' ? '<span class="muted">– (Reserve)</span>' : (s.preferred_duty_ids || []).length ? s.preferred_duty_ids.map((id, i) => (i + 1) + '. ' + esc(dutyNames[id] || '#' + id)).join('<br/>') : 'Keine Präferenz'}${(s.reserve_duty_ids || []).length ? `<div style="color:var(--info);font-size:.78rem">Reserve: ${s.reserve_duty_ids.map((id) => esc(dutyNames[id] || '#' + id)).join(', ')}</div>` : ''}</td>
                   <td class="muted-sm">${s.available_start ? esc(fmtTime(s.available_start)) + ' – ' + esc(fmtTime(s.available_end)) : 'Ganztags'}</td>
@@ -747,7 +846,7 @@ const AdminPage = {
             </select>
             <select class="input" id="act-fuser" style="max-width:240px">
               <option value="0">Alle Personen</option>
-              ${userIds.map((uid) => { const u = allItems.find((i) => i.user_id === uid); return `<option value="${uid}" ${fUser === uid ? 'selected' : ''}>${esc((u && (u.display_name || u.username)) || uid)}</option>`; }).join('')}
+              ${userIds.map((uid) => { const u = allItems.find((i) => i.user_id === uid); return `<option value="${uid}" ${fUser === uid ? 'selected' : ''}>${esc(userName(u) || (isDeletedUser(u) ? 'Gelöscht' : uid))}</option>`; }).join('')}
             </select>
           </div>
         </div>
@@ -757,7 +856,7 @@ const AdminPage = {
             <tbody>
               ${items.length ? items.map((it) => `
                 <tr data-aid="${it.assignment_id}" data-duty="${it.duty_id}" data-uid="${it.user_id}">
-                  <td><b>${esc(it.display_name || it.username)}</b></td>
+                  <td><b>${esc(userName(it) || (isDeletedUser(it) ? 'Gelöscht' : it.username || '?'))}</b></td>
                   <td class="muted-sm">${esc(it.shift_title)}<br/><span class="muted">${esc(fmtDate(it.shift_date))}</span></td>
                   <td><b>${esc(it.duty_code)}</b></td>
                   <td class="num muted-sm">${it.duty_start ? esc(fmtTime(it.duty_start)) + ' – ' + esc(fmtTime(it.duty_end)) : '–'}</td>

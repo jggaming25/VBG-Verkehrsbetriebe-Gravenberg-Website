@@ -436,6 +436,7 @@ const standorte = await db.all(`SELECT * FROM standorte WHERE active = 1 ORDER B
       volunteer_strafe: !!s.volunteer_strafe,
       strafe_abarbeitung: !!s.strafe_abarbeitung,
       preferred_standort_id: s.preferred_standort_id || null,
+      preferred_standort2_id: s.preferred_standort2_id || null,
       available_start: s.available_start || '', available_end: s.available_end || '',
       needs_senior: !!s.needs_senior, note: s.note || '', status: s.status || 'angemeldet',
       reserve_duty_ids: (s.reserve_duty_ids || '').split(',').filter(Boolean).map((x) => parseInt(x, 10)),
@@ -468,6 +469,7 @@ const rawWish = Array.isArray(req.body.preferred_duty_ids) ? req.body.preferred_
   const preferred_ks_role = String(req.body.preferred_ks_role || '').slice(0, 60);
   const volunteer_strafe = req.body.volunteer_strafe ? 1 : 0;
   const preferred_standort_id = parseInt(req.body.preferred_standort_id || '0', 10) || null;
+  const preferred_standort2_id = parseInt(req.body.preferred_standort2_id || '0', 10) || null;
   const available_start = String(req.body.available_start || '').slice(0, 20);
   const available_end = String(req.body.available_end || '').slice(0, 20);
   const needs_senior = req.body.needs_senior ? 1 : 0;
@@ -514,17 +516,17 @@ const rawWish = Array.isArray(req.body.preferred_duty_ids) ? req.body.preferred_
 const existing = await db.get(`SELECT id FROM signups WHERE shift_id = ? AND user_id = ?`, [shiftId, req.user.id]);
   if (existing) {
     await db.run(`
-      UPDATE signups SET preferred_duty_ids = ?, preferred_ks_role = ?, volunteer_strafe = ?, strafe_abarbeitung = ?, preferred_standort_id = ?,
+      UPDATE signups SET preferred_duty_ids = ?, preferred_ks_role = ?, volunteer_strafe = ?, strafe_abarbeitung = ?, preferred_standort_id = ?, preferred_standort2_id = ?,
       available_start = ?, available_end = ?, needs_senior = ?, note = ?,
       reserve_duty_ids = ?, reserve_start = ?, reserve_end = ?, reserve_reason = ?, status = ?, updated_at = datetime('now')
       WHERE id = ?`,
-      [preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note,
+      [preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, preferred_standort2_id, available_start, available_end, needs_senior, note,
        reserve_duty_ids.join(','), reserve_start, reserve_end, reserve_reason, status, existing.id]);
   } else {
     await db.run(`
-      INSERT INTO signups (shift_id, user_id, preferred_duty_ids, preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note, reserve_duty_ids, reserve_start, reserve_end, reserve_reason, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [shiftId, req.user.id, preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note, reserve_duty_ids.join(','), reserve_start, reserve_end, reserve_reason, status]);
+      INSERT INTO signups (shift_id, user_id, preferred_duty_ids, preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, preferred_standort2_id, available_start, available_end, needs_senior, note, reserve_duty_ids, reserve_start, reserve_end, reserve_reason, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [shiftId, req.user.id, preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, preferred_standort2_id, available_start, available_end, needs_senior, note, reserve_duty_ids.join(','), reserve_start, reserve_end, reserve_reason, status]);
   }
   await notify(req.user.id, 'signup', 'Anmeldung gespeichert', 'Shift #' + shiftId + (status === 'reserve' ? ' – auf der Reserveliste' : ''));
   res.json({ ok: true, status, reserve_reason });
@@ -569,6 +571,7 @@ app.get('/api/admin/signups', requireAuth, requireScheduler, async (req, res) =>
       reserve_start: s.reserve_start || '', reserve_end: s.reserve_end || '', reserve_reason: s.reserve_reason || '',
       available_start: s.available_start || '', available_end: s.available_end || '',
       volunteer_strafe: !!s.volunteer_strafe, strafe_abarbeitung: !!s.strafe_abarbeitung,
+      preferred_standort_id: s.preferred_standort_id || null, preferred_standort2_id: s.preferred_standort2_id || null,
       needs_senior: !!s.needs_senior, status: s.status || 'angemeldet',
       open_hours: Math.round((s.open_hours || 0) * 10) / 10
     }))
@@ -691,7 +694,7 @@ async function runAutoshift(shiftId, actor) {
       const pu = perUser.get(sg.user_id);
       if (pu.assigned.length) return false;
       if (!sg.volunteer_strafe) return false;
-      if (duty.standort_id && sg.preferred_standort_id && duty.standort_id !== sg.preferred_standort_id) return false;
+      if (duty.standort_id && sg.preferred_standort_id && duty.standort_id !== sg.preferred_standort_id && (!sg.preferred_standort2_id || duty.standort_id !== sg.preferred_standort2_id)) return false;
       return pu['d_' + duty.id] !== false;
     });
     if (!volunteers.length) continue;
@@ -882,7 +885,23 @@ app.post('/api/admin/activity', requireAuth, requireScheduler, async (req, res) 
   res.json({ ok: true });
 });
 
-/* -------------------- Activity: Fahrer-Selbstanmeldung (60 % Fahrtzeit) -------------------- */
+app.post('/api/admin/activity/bulk', requireAuth, requireScheduler, async (req, res) => {
+  const shiftId = parseInt(req.body.shift_id || req.query.shift_id || '0', 10);
+  if (!shiftId) return res.status(400).json({ error: 'Shift angeben.' });
+  const rows = await db.all(`
+    SELECT a.id AS assignment_id, a.user_id, d.id AS duty_id, d.code AS duty_code
+    FROM assignments a JOIN dutys d ON d.id = a.duty_id
+    WHERE d.shift_id = ? AND a.kind = 'haupt' AND a.status = 'bestaetigt'
+    AND NOT EXISTS (SELECT 1 FROM activity ac WHERE ac.user_id = a.user_id AND ac.duty_id = d.id)
+    ORDER BY d.start, d.id`, [shiftId]);
+  for (const r of rows) {
+    await db.run(`INSERT INTO activity (assignment_id, duty_id, user_id, result, note, marked_by) VALUES (?, ?, ?, 'teilgenommen', 'Ganzer Shift erfasst', ?)`,
+      [r.assignment_id, r.duty_id, r.user_id, req.user.id]);
+    await notify(r.user_id, 'activity', 'Activity bestätigt',
+      'Deine Teilnahme (' + r.duty_code + ') wurde eingetragen.');
+  }
+  res.json({ ok: true, erfasst: rows.length });
+});
 
 function toDm(v) {
   const d = new Date(String(v || '').length === 16 ? v + ':00' : v);
@@ -1301,10 +1320,94 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) =
     await db.run(`DELETE FROM users WHERE id = ?`, [id]);
   } catch (e) {
     await db.run(`
-      UPDATE users SET active = 0, username = 'geloescht_' || id, display_name = 'GelÃ¶schtes Konto',
+      UPDATE users SET active = 0, username = 'geloescht_' || id, display_name = '',
         password_hash = '!', must_change_password = 1, avatar = '', country_code = '', language = 'de',
         theme = 'auto', notifications = 0
       WHERE id = ?`, [id]);
+  }
+  res.json({ ok: true });
+});
+
+/* ------------------------------ Wipe (alle Daten außer Admin-Konten) ------------------------------ */
+
+function wipePending() {
+  return db.get(`SELECT * FROM wipe_requests WHERE executed_at IS NULL ORDER BY id DESC LIMIT 1`);
+}
+
+async function wipeActiveAdmins() {
+  return db.all(`SELECT id, username, display_name FROM users WHERE role = 'admin' AND active = 1 ORDER BY username`);
+}
+
+app.get('/api/admin/wipe', requireAuth, requireAdmin, async (req, res) => {
+  const [pending, admins] = await Promise.all([wipePending(), wipeActiveAdmins()]);
+  const creator = pending ? admins.find((a) => a.id === pending.created_by) : null;
+  res.json({
+    admins: admins.map((a) => ({ id: a.id, username: a.username, display_name: a.display_name })),
+    request: pending ? {
+      id: pending.id,
+      created_by: pending.created_by,
+      created_by_name: (creator && (creator.display_name || creator.username)) || '',
+      created_at: pending.created_at,
+      confirmed_by: (pending.confirmed_by || '').split(',').filter(Boolean).map((x) => parseInt(x, 10))
+    } : null
+  });
+});
+
+app.post('/api/admin/wipe', requireAuth, requireAdmin, async (req, res) => {
+  const pending = await wipePending();
+  if (pending) return res.status(400).json({ error: 'Es existiert bereits ein offener Löschantrag.' });
+  await db.run(`INSERT INTO wipe_requests (created_by) VALUES (?)`, [req.user.id]);
+  const admins = await wipeActiveAdmins();
+  for (const a of admins) {
+    if (a.id === req.user.id) continue;
+    await notify(a.id, 'admin', 'Löschantrag gestellt',
+      (req.user.display_name || req.user.username) + ' hat beantragt, alle Daten außer den Admin-Konten zu löschen. Bitte im Admin-Bereich bestätigen.');
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/wipe/confirm', requireAuth, requireAdmin, async (req, res) => {
+  const pending = await wipePending();
+  if (!pending) return res.status(400).json({ error: 'Kein offener Löschantrag.' });
+  const admins = await wipeActiveAdmins();
+  const confirmed = new Set((pending.confirmed_by || '').split(',').filter(Boolean).map((x) => parseInt(x, 10)));
+  if (pending.created_by !== req.user.id) confirmed.add(req.user.id);
+  const required = admins.filter((a) => a.id !== pending.created_by).map((a) => a.id);
+  const allConfirmed = required.every((id) => confirmed.has(id));
+  if (allConfirmed) {
+    await db.run(`DELETE FROM assignments`);
+    await db.run(`DELETE FROM fahrten`);
+    await db.run(`DELETE FROM dutys`);
+    await db.run(`DELETE FROM activity`);
+    await db.run(`DELETE FROM strafzeiten`);
+    await db.run(`DELETE FROM inactivity`);
+    await db.run(`DELETE FROM signups`);
+    await db.run(`DELETE FROM shifts`);
+    await db.run(`DELETE FROM notifications`);
+    await db.run(`DELETE FROM users WHERE role != 'admin'`);
+    await db.run(`DELETE FROM wipe_requests WHERE id = ?`, [pending.id]);
+    for (const a of admins) {
+      await notify(a.id, 'admin', 'Löschung ausgeführt',
+        'Alle Daten außer den Admin-Konten wurden gelöscht.');
+    }
+    return res.json({ ok: true, executed: true });
+  }
+  await db.run(`UPDATE wipe_requests SET confirmed_by = ? WHERE id = ?`,
+    [[...confirmed].join(','), pending.id]);
+  res.json({ ok: true, executed: false, missing: required.filter((id) => !confirmed.has(id)) });
+});
+
+app.post('/api/admin/wipe/cancel', requireAuth, requireAdmin, async (req, res) => {
+  const pending = await wipePending();
+  if (!pending) return res.status(400).json({ error: 'Kein offener Löschantrag.' });
+  if (pending.created_by !== req.user.id) return res.status(400).json({ error: 'Nur der Ersteller kann den Antrag zurückziehen.' });
+  const admins = await wipeActiveAdmins();
+  await db.run(`DELETE FROM wipe_requests WHERE id = ?`, [pending.id]);
+  for (const a of admins) {
+    if (a.id !== req.user.id) {
+      await notify(a.id, 'admin', 'Löschantrag zurückgezogen',
+        (req.user.display_name || req.user.username) + ' hat den Löschantrag zurückgezogen.');
+    }
   }
   res.json({ ok: true });
 });

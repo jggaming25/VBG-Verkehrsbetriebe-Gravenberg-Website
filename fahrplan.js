@@ -15,9 +15,12 @@ const MAX_FAHRTEN = 9;
 const MAX_SELBE_LINIE = 5;
 
 let cached = null;
+let cachedMtime = null;
 function getFahrplan() {
-  if (!cached) {
+  const stat = fs.statSync(JSON_PATH);
+  if (!cached || stat.mtimeMs !== cachedMtime) {
     cached = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+    cachedMtime = stat.mtimeMs;
   }
   return cached;
 }

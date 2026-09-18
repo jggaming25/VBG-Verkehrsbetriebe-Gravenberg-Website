@@ -3,13 +3,24 @@ const AnmeldungPage = {
   title: 'Anmeldung',
   state: { shiftId: null },
 
+  linieLabel(l) {
+    const s = String(l || '');
+    return /^\d+$/.test(s) ? 'L' + s : s;
+  },
+
   dutyLabel(d) {
-    let name = d.code;
-    if (d.type === 'bus') name = d.linien_unik && d.linien_unik.length ? d.linien_unik.join(' → ') : (d.linie || d.code);
-    else if (d.type === 'wechsel') name = (d.wechsel_from_name || '?') + ' → ' + (d.wechsel_to_name || '?');
-    else if (d.type === 'strafe') name = d.standort || 'Kundenservice Strafe';
+    let name;
+    if (d.type === 'bus') {
+      name = 'Linien: ' + ((d.linien_unik && d.linien_unik.length)
+        ? d.linien_unik.map((l) => this.linieLabel(l)).join(', ')
+        : (this.linieLabel(d.linie) || d.code));
+    } else if (d.type === 'wechsel') {
+      name = 'Linienwechsel ' + (d.wechsel_from_name || '?') + ' → ' + (d.wechsel_to_name || '?');
+    } else {
+      name = d.standort || 'Kundenservice Strafe';
+    }
     const t = d.start ? ' · ' + fmtTime(d.start) + '–' + fmtTime(d.end) : '';
-    return d.code + ' · ' + name + t;
+    return 'Dienst ' + d.code + ' · ' + name + t;
   },
 
   async render(container) {
@@ -57,7 +68,7 @@ const AnmeldungPage = {
             ${data.open_shifts.map((s) => `
               <label class="seg-label" data-shift="${s.id}">
                 <input type="radio" name="signup-shift" value="${s.id}" ${s.id === this.state.shiftId ? 'checked' : ''}/>
-                <span>${esc(s.title)} · ${esc(fmtDate(s.date))} ${esc(fmtTime(s.time_start))}</span>
+                <span>${esc(s.title)} · ${esc(fmtDateShort(s.date))} ${esc(fmtTime(s.time_start))}</span>
               </label>`).join('')}
           </div>` : '<div class="empty">Zurzeit ist keine Anmeldung geöffnet.</div>'}
       </div>
@@ -79,7 +90,7 @@ const AnmeldungPage = {
               ${Array.from({ length: maxWish }, (_, i) => `
                 <label class="field">
                   <span class="field-label">${i + 1}. Duty-Wunsch</span>
-                  <select class="input" name="duty_wish" data-wish="${i + 1}" ${overSchwelle ? 'disabled' : ''}>
+                  <select class="input" name="duty_wish" data-wish="${i + 1}" ${overSchwelle || (mySignup && mySignup.strafe_abarbeitung) ? 'disabled' : ''}>
                     <option value="">Keine Präferenz</option>
                     ${duties.filter((d) => d.type !== 'strafe').map((d) => `
                       <option value="${d.id}" ${mySignup && mySignup.preferred_duty_ids[i] === d.id ? 'selected' : ''}>${esc(this.dutyLabel(d))}</option>`).join('')}
@@ -123,6 +134,24 @@ const AnmeldungPage = {
               <input type="checkbox" id="strafe-abarbeitung" ${(overSchwelle || (mySignup && mySignup.strafe_abarbeitung)) ? 'checked' : ''} ${overSchwelle ? 'disabled' : ''}/>
               <span>Diesen Dienst als Strafe-Abarbeitung werten</span>
             </label>
+            <div id="strafe-standort-block" class="${overSchwelle || (mySignup && mySignup.strafe_abarbeitung) ? '' : 'hidden'}">
+              <div class="form-grid">
+                <label class="field">
+                  <span class="field-label">Standortwunsch 1</span>
+                  <select class="input" name="strafe_standort_1">
+                    <option value="">Posten egal</option>
+                    ${data.standorte.map((st) => `<option value="${st.id}" ${mySignup && mySignup.preferred_standort_id === st.id ? 'selected' : ''}>${esc(st.name)}</option>`).join('')}
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Standortwunsch 2</span>
+                  <select class="input" name="strafe_standort_2">
+                    <option value="">Kein zweiter Wunsch</option>
+                    ${data.standorte.map((st) => `<option value="${st.id}" ${mySignup && mySignup.preferred_standort2_id === st.id ? 'selected' : ''}>${esc(st.name)}</option>`).join('')}
+                  </select>
+                </label>
+              </div>
+            </div>
             <p class="panel-sub">Strafe-Abarbeitung und normale Duty-Wünsche schließen sich gegenseitig aus.${overSchwelle ? ' Da deine Strafzeit über der Schwelle liegt, sind nur Strafe-Abarbeitungen möglich.' : ''} Fehlende offene Strafzeit bei gewählter Abarbeitung trägt dich automatisch in die Reserveliste ein.</p>
             <label class="field">
               <span class="field-label">Anmerkung</span>
@@ -181,20 +210,39 @@ const AnmeldungPage = {
       });
     }
 
+    const strafeCheck = container.querySelector('#strafe-abarbeitung');
+    if (strafeCheck) {
+      const wishSelects = Array.from(container.querySelectorAll('select[name="duty_wish"]'));
+      const standortBlock = container.querySelector('#strafe-standort-block');
+      const applyStrafeState = () => {
+        const on = overSchwelle || strafeCheck.checked;
+        if (standortBlock) standortBlock.classList.toggle('hidden', !on);
+        wishSelects.forEach((s) => { s.disabled = on; });
+      };
+      strafeCheck.addEventListener('change', applyStrafeState);
+      if (overSchwelle) applyStrafeState();
+    }
+
     const form = container.querySelector('#signup-form');
     if (form) {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const wishes = Array.from(form.querySelectorAll('select[name="duty_wish"]')).map((s) => s.value ? parseInt(s.value, 10) : 0);
         const standort = form.querySelector('input[name="strafe_standort"]:checked');
+        const abarbeiten = overSchwelle || (strafeCheck ? strafeCheck.checked : false);
+        const sl1 = form.querySelector('select[name="strafe_standort_1"]');
+        const sl2 = form.querySelector('select[name="strafe_standort_2"]');
+        const wunsch1 = sl1 ? (parseInt(sl1.value, 10) || null) : null;
+        const wunsch2 = sl2 ? (parseInt(sl2.value, 10) || null) : null;
         const payload = {
           shift_id: this.state.shiftId,
-          preferred_duty_ids: overSchwelle ? [] : wishes.filter((v) => v > 0),
+          preferred_duty_ids: abarbeiten ? [] : wishes.filter((v) => v > 0),
           volunteer_strafe: volCheck ? volCheck.checked : false,
-          preferred_standort_id: standort ? parseInt(standort.value, 10) : null,
+          preferred_standort_id: abarbeiten ? wunsch1 : (standort ? parseInt(standort.value, 10) : null),
+          preferred_standort2_id: abarbeiten ? wunsch2 : null,
           available_start: form.querySelector('#avail-start').value,
           available_end: form.querySelector('#avail-end').value,
-          strafe_abarbeitung: overSchwelle || form.querySelector('#strafe-abarbeitung').checked,
+          strafe_abarbeitung: abarbeiten,
           needs_senior: form.querySelector('#needs-senior').checked,
           note: form.querySelector('#signup-note').value
         };
