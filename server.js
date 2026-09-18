@@ -1338,6 +1338,20 @@ async function wipeActiveAdmins() {
   return db.all(`SELECT id, username, display_name FROM users WHERE role = 'admin' AND active = 1 ORDER BY username`);
 }
 
+async function executeWipe() {
+  await db.run(`DELETE FROM assignments`);
+  await db.run(`DELETE FROM fahrten`);
+  await db.run(`DELETE FROM dutys`);
+  await db.run(`DELETE FROM activity`);
+  await db.run(`DELETE FROM strafzeiten`);
+  await db.run(`DELETE FROM inactivity`);
+  await db.run(`DELETE FROM signups`);
+  await db.run(`DELETE FROM shifts`);
+  await db.run(`DELETE FROM notifications`);
+  await db.run(`DELETE FROM users WHERE role != 'admin'`);
+  await db.run(`DELETE FROM wipe_requests`);
+}
+
 app.get('/api/admin/wipe', requireAuth, requireAdmin, async (req, res) => {
   const [pending, admins] = await Promise.all([wipePending(), wipeActiveAdmins()]);
   const creator = pending ? admins.find((a) => a.id === pending.created_by) : null;
@@ -1356,8 +1370,17 @@ app.get('/api/admin/wipe', requireAuth, requireAdmin, async (req, res) => {
 app.post('/api/admin/wipe', requireAuth, requireAdmin, async (req, res) => {
   const pending = await wipePending();
   if (pending) return res.status(400).json({ error: 'Es existiert bereits ein offener Löschantrag.' });
-  await db.run(`INSERT INTO wipe_requests (created_by) VALUES (?)`, [req.user.id]);
   const admins = await wipeActiveAdmins();
+  const others = admins.filter((a) => a.id !== req.user.id);
+  if (!others.length) {
+    await executeWipe();
+    for (const a of admins) {
+      await notify(a.id, 'admin', 'Löschung ausgeführt',
+        'Alle Daten außer den Admin-Konten wurden gelöscht.');
+    }
+    return res.json({ ok: true, executed: true });
+  }
+  await db.run(`INSERT INTO wipe_requests (created_by) VALUES (?)`, [req.user.id]);
   for (const a of admins) {
     if (a.id === req.user.id) continue;
     await notify(a.id, 'admin', 'Löschantrag gestellt',
@@ -1375,17 +1398,7 @@ app.post('/api/admin/wipe/confirm', requireAuth, requireAdmin, async (req, res) 
   const required = admins.filter((a) => a.id !== pending.created_by).map((a) => a.id);
   const allConfirmed = required.every((id) => confirmed.has(id));
   if (allConfirmed) {
-    await db.run(`DELETE FROM assignments`);
-    await db.run(`DELETE FROM fahrten`);
-    await db.run(`DELETE FROM dutys`);
-    await db.run(`DELETE FROM activity`);
-    await db.run(`DELETE FROM strafzeiten`);
-    await db.run(`DELETE FROM inactivity`);
-    await db.run(`DELETE FROM signups`);
-    await db.run(`DELETE FROM shifts`);
-    await db.run(`DELETE FROM notifications`);
-    await db.run(`DELETE FROM users WHERE role != 'admin'`);
-    await db.run(`DELETE FROM wipe_requests WHERE id = ?`, [pending.id]);
+    await executeWipe();
     for (const a of admins) {
       await notify(a.id, 'admin', 'Löschung ausgeführt',
         'Alle Daten außer den Admin-Konten wurden gelöscht.');

@@ -211,17 +211,23 @@ const AdminPage = {
         return;
       }
       if (!req) {
+        const solo = admins.length === 1;
         slot.innerHTML = `
           <div class="panel" style="border:1px solid var(--danger)">
             <div class="panel-head"><h2>Risikobereich: Alle Daten löschen</h2></div>
-            <p class="panel-sub">Löscht alle Konten außer den Admin-Konten sowie alle Anmeldungen, Shifts, Dienste, Fahrten, Strafzeiten, Activity und Benachrichtigungen. Ausgeführt wird die Löschung erst, wenn <b>alle anderen Admins</b> hier bestätigt haben.</p>
+            <p class="panel-sub">Löscht alle Konten außer den Admin-Konten sowie alle Anmeldungen, Shifts, Dienste, Fahrten, Strafzeiten, Activity und Benachrichtigungen. ${solo
+              ? 'Es existiert <b>kein weiterer Admin</b> – die Löschung wird direkt nach der Bestätigungsfrage ausgeführt.'
+              : 'Ausgeführt wird die Löschung erst, wenn <b>alle anderen Admins</b> hier bestätigt haben.'}</p>
             <button class="btn btn-danger" id="wipe-init">Löschantrag stellen</button>
           </div>`;
         const b = slot.querySelector('#wipe-init');
         b.addEventListener('click', async () => {
-          if (!confirm('Wirklich einen Löschantrag stellen? Alle Daten außer den Admin-Konten werden gelöscht, sobald alle anderen Admins bestätigt haben.')) return;
+          if (!confirm(solo
+            ? 'Wirklich ALLE Daten unwiderruflich löschen? Alle Konten außer dem Admin-Konto sowie alle Anmeldungen, Shifts, Dienste, Fahrten, Strafzeiten, Activity und Benachrichtigungen werden gelöscht. Dies kann nicht rückgängig gemacht werden.'
+            : 'Wirklich einen Löschantrag stellen? Alle Daten außer den Admin-Konten werden gelöscht, sobald alle anderen Admins bestätigt haben.')) return;
           try {
-            await API.post('/api/admin/wipe', {});
+            const r = await API.post('/api/admin/wipe', {});
+            if (r.executed) { App.toast('Löschung ausgeführt.'); App.reload(); return; }
             App.toast('Löschantrag gestellt. Alle anderen Admins müssen im Admin-Bereich bestätigen.');
             App.reload();
           } catch (e) { App.toast(e.message, 'error'); }
@@ -229,12 +235,15 @@ const AdminPage = {
         return;
       }
       const isCreator = req.created_by === me;
+      const solo = admins.length === 1;
       const confirmed = req.confirmed_by || [];
-      const canConfirm = !isCreator && !confirmed.includes(me);
+      const canConfirm = (solo || !isCreator) && !confirmed.includes(me);
       slot.innerHTML = `
         <div class="panel" style="border:1px solid var(--danger)">
           <div class="panel-head"><h2>Offener Löschantrag</h2><span class="badge badge-red">Aktiv</span></div>
-          <p class="panel-sub">Antrag erstellt <b>${esc(fmtDateTime(req.created_at))}</b> · Ersteller: <b>${esc(req.created_by_name || '–')}</b>. Die Löschung wird ausgeführt, sobald <b>alle anderen Admins</b> bestätigt haben.</p>
+          <p class="panel-sub">Antrag erstellt <b>${esc(fmtDateTime(req.created_at))}</b> · Ersteller: <b>${esc(req.created_by_name || '–')}</b>. ${solo
+            ? 'Es existiert <b>kein weiterer Admin</b> – die Löschung wird nach deiner Bestätigung ausgeführt.'
+            : 'Die Löschung wird ausgeführt, sobald <b>alle anderen Admins</b> bestätigt haben.'}</p>
           <div class="act-preview">
             ${admins.map((a) => {
               const ok = a.id === req.created_by || confirmed.includes(a.id);
