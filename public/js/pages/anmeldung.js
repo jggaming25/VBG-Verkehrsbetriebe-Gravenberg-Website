@@ -5,7 +5,7 @@ const AnmeldungPage = {
 
   dutyLabel(d) {
     let name = d.code;
-    if (d.type === 'bus') name = d.linie || d.code;
+    if (d.type === 'bus') name = d.linien_unik && d.linien_unik.length ? d.linien_unik.join(' → ') : (d.linie || d.code);
     else if (d.type === 'wechsel') name = (d.wechsel_from_name || '?') + ' → ' + (d.wechsel_to_name || '?');
     else if (d.type === 'strafe') name = d.standort || 'Kundenservice Strafe';
     const t = d.start ? ' · ' + fmtTime(d.start) + '–' + fmtTime(d.end) : '';
@@ -18,6 +18,11 @@ const AnmeldungPage = {
     const closeMin = settings.signup_close_minutes || 60;
     const startMin = settings.staff_start_minutes || 30;
     const maxWish = settings.max_duty_wishes || 5;
+    const openStrafzeit = data.open_strafzeit || 0;
+    const schwelle = data.schwelle || 3;
+    const strafeName = data.strafe_name || 'Kundenservice Strafe';
+    const overSchwelle = openStrafzeit >= schwelle;
+    const reserveCap = data.reserve_plaetze_pro_shift || 5;
 
     this.state.shiftId = parseInt(localStorage.getItem('vbg_signup_shift') || '0', 10) || null;
     if (!data.open_shifts.some((s) => s.id === this.state.shiftId)) {
@@ -33,6 +38,15 @@ const AnmeldungPage = {
       <div class="page-head">
         <h1>Staff Sign-Up</h1>
         <p>Melde dich für kommende Shifts an und wünsche dir deine Dienste.</p>
+        ${overSchwelle ? `
+          <div class="panel" style="background:var(--warning-soft);border:1px solid var(--warning);margin-top:14px">
+            <b>${esc(strafeName)}-Hinweis:</b> Du hast <b>${openStrafzeit} h</b> offene Strafzeit (Schwelle: ${schwelle} h).
+            Bitte wähle zuerst eine Strafe-Abarbeitung – Duty-Wünsche sind in dieser Zeit deaktiviert.
+          </div>` : `
+          <div class="panel" style="background:var(--bg-soft);border:1px solid var(--border);margin-top:14px">
+            Offene Strafzeit: <b>${openStrafzeit} h</b> (Schwelle für erzwungene ${esc(strafeName)}-Abarbeitung: ${schwelle} h).
+            Volle Strafe-Abarbeitung ohne offene Strafzeit trägt dich automatisch in die Reserveliste (max. ${reserveCap} pro Shift).
+          </div>`}
       </div>
 
       <div class="panel">
@@ -60,12 +74,12 @@ const AnmeldungPage = {
           </div>
           <form id="signup-form">
             <h2 style="margin-top:14px">Duty-Wünsche</h2>
-            <p class="panel-sub">Du kannst bis zu ${maxWish} Dienste in deiner Reihenfolge wünschen. Der Autoshift behandelt zuerst alle 1. Wünsche, danach die 2., 3. usw. Harte Regeln wie Lizenz, Verfügbarkeit, Inactivity und Überschneidungen bleiben wichtiger.</p>
+            <p class="panel-sub">Du kannst bis zu ${maxWish} Dienste in deiner Reihenfolge wünschen. Der Autoshift behandelt zuerst alle 1. Wünsche, danach die 2., 3. usw. Harte Regeln wie Lizenz, Verfügbarkeit, Inactivity und Überschneidungen bleiben wichtiger.${overSchwelle ? ' <b style="color:var(--warning)">Duty-Wünsche sind derzeit deaktiviert (offene Strafzeit über der Schwelle).</b>' : ''}</p>
             <div class="form-grid">
               ${Array.from({ length: maxWish }, (_, i) => `
                 <label class="field">
                   <span class="field-label">${i + 1}. Duty-Wunsch</span>
-                  <select class="input" name="duty_wish" data-wish="${i + 1}">
+                  <select class="input" name="duty_wish" data-wish="${i + 1}" ${overSchwelle ? 'disabled' : ''}>
                     <option value="">Keine Präferenz</option>
                     ${duties.filter((d) => d.type !== 'strafe').map((d) => `
                       <option value="${d.id}" ${mySignup && mySignup.preferred_duty_ids[i] === d.id ? 'selected' : ''}>${esc(this.dutyLabel(d))}</option>`).join('')}
@@ -106,9 +120,10 @@ const AnmeldungPage = {
               <span>Senior-Begleitung benötigt</span>
             </label>
             <label class="check-line">
-              <input type="checkbox" id="strafe-abarbeitung" ${mySignup && mySignup.strafe_abarbeitung ? 'checked' : ''}/>
+              <input type="checkbox" id="strafe-abarbeitung" ${(overSchwelle || (mySignup && mySignup.strafe_abarbeitung)) ? 'checked' : ''} ${overSchwelle ? 'disabled' : ''}/>
               <span>Diesen Dienst als Strafe-Abarbeitung werten</span>
             </label>
+            <p class="panel-sub">Strafe-Abarbeitung und normale Duty-Wünsche schließen sich gegenseitig aus.${overSchwelle ? ' Da deine Strafzeit über der Schwelle liegt, sind nur Strafe-Abarbeitungen möglich.' : ''} Fehlende offene Strafzeit bei gewählter Abarbeitung trägt dich automatisch in die Reserveliste ein.</p>
             <label class="field">
               <span class="field-label">Anmerkung</span>
               <textarea class="input" id="signup-note" placeholder="Optionale Anmerkung zur Shift …">${esc(mySignup ? mySignup.note : '')}</textarea>
@@ -134,12 +149,14 @@ const AnmeldungPage = {
                   <tr>
                     <td><b>${esc(s.shift_title)}</b></td>
                     <td>${esc(fmtDate(s.shift_date))} ${esc(fmtTime(s.shift_start))} – ${esc(fmtTime(s.shift_end))}</td>
-                    <td class="muted-sm">${wishNames.length ? wishNames.map((w, i) => (i + 1) + '. ' + esc(w)).join('<br/>') : 'Keine Präferenz'}</td>
+                    <td class="muted-sm">${wishNames.length ? wishNames.map((w, i) => (i + 1) + '. ' + esc(w)).join('<br/>') : 'Keine Präferenz'}${(s.reserve_duty_ids || []).length ? `<div style="color:var(--info);font-size:.78rem">Reserve (Konflikt): ${s.reserve_duty_ids.map((id) => { const dd = duties.find((x) => x.id === id); return esc(dd ? this.dutyLabel(dd) : '#' + id); }).join(', ')}</div>` : ''}${s.status === 'reserve' && s.reserve_reason ? `<div style="color:var(--info);font-size:.78rem">${esc(s.reserve_reason)}</div>` : ''}</td>
                     <td class="muted-sm">${s.available_start ? esc(fmtTime(s.available_start)) + ' – ' + esc(fmtTime(s.available_end)) : 'Ganztags'}</td>
                     <td class="muted-sm">${s.volunteer_strafe ? 'Ja' : 'Nein'}</td>
                     <td class="muted-sm">${s.strafe_abarbeitung ? 'Ja' : 'Nein'}</td>
                     <td class="muted-sm">${s.needs_senior ? 'Ja' : 'Nein'}</td>
-                    <td><span class="badge badge-green">Angemeldet</span></td>
+                    <td>${s.status === 'reserve'
+                      ? '<span class="badge badge-blue" title="Auf der Reserveliste">Reserve</span>'
+                      : '<span class="badge badge-green">Angemeldet</span>'}</td>
                     <td>${s.shift_status === 'published' ? `<button class="btn btn-danger btn-xs" data-unregister="${s.shift_id}">Abmelden</button>` : ''}</td>
                   </tr>`;
                 }).join('')}
@@ -172,18 +189,18 @@ const AnmeldungPage = {
         const standort = form.querySelector('input[name="strafe_standort"]:checked');
         const payload = {
           shift_id: this.state.shiftId,
-          preferred_duty_ids: wishes.filter((v) => v > 0),
+          preferred_duty_ids: overSchwelle ? [] : wishes.filter((v) => v > 0),
           volunteer_strafe: volCheck ? volCheck.checked : false,
           preferred_standort_id: standort ? parseInt(standort.value, 10) : null,
           available_start: form.querySelector('#avail-start').value,
           available_end: form.querySelector('#avail-end').value,
-          strafe_abarbeitung: form.querySelector('#strafe-abarbeitung').checked,
+          strafe_abarbeitung: overSchwelle || form.querySelector('#strafe-abarbeitung').checked,
           needs_senior: form.querySelector('#needs-senior').checked,
           note: form.querySelector('#signup-note').value
         };
         try {
-          await API.post('/api/anmeldung', payload);
-          App.toast('Anmeldung gespeichert.');
+          const r = await API.post('/api/anmeldung', payload);
+          App.toast((r.status === 'reserve' ? 'Anmeldung gespeichert – als Reserve eingetragen.' : 'Anmeldung gespeichert.'));
           App.reload();
         } catch (err) {
           App.toast(err.message, 'error');

@@ -100,6 +100,7 @@ async function initOnce() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+  await addColumn('users', 'notifications', 'INTEGER NOT NULL DEFAULT 1');
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -169,6 +170,7 @@ async function initOnce() {
   await addColumn('shifts', 'auto_dienste', 'INTEGER');
   await addColumn('shifts', 'betrieb_von', 'TEXT');
   await addColumn('shifts', 'betrieb_bis', 'TEXT');
+  await addColumn('shifts', 'reserve_cap', 'INTEGER');
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS dutys (
@@ -224,6 +226,10 @@ async function initOnce() {
     )
   `);
   await addColumn('signups', 'strafe_abarbeitung', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumn('signups', 'reserve_duty_ids', 'TEXT NOT NULL DEFAULT \'\'');
+  await addColumn('signups', 'reserve_start', 'TEXT');
+  await addColumn('signups', 'reserve_end', 'TEXT');
+  await addColumn('signups', 'reserve_reason', 'TEXT');
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS assignments (
@@ -290,6 +296,19 @@ async function initOnce() {
     )
   `);
 
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      seen INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await client.execute(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, id)`);
+
   const settingsDefaults = {
     meldung_active: '0',
     meldung_text: '',
@@ -298,7 +317,8 @@ async function initOnce() {
     strafe_schwelle_hours: '3',
     strafe_dauer_hours: '1.5',
     strafe_name: 'Kundenservice-Strafe',
-    max_duty_wishes: '5'
+    max_duty_wishes: '5',
+    reserve_plaetze_pro_shift: '5'
   };
   for (const [k, v] of Object.entries(settingsDefaults)) {
     await client.execute(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`, [k, v]);
@@ -340,6 +360,14 @@ async function initOnce() {
     await syncFahrplanFromJson();
   } catch (e) {
     console.log('[migration] Fahrplan-Sync übersprungen: ' + e.message);
+  }
+  try {
+    const synced = require('./fahrplaene/parse-html.js').syncKurseFromHtml();
+    if (synced.changed > 0) {
+      console.log('[seed] Fahrplan-Sync (HTML): ' + synced.changed + ' Linien mit echten Zeiten aktualisiert (Kurse: ' + synced.lines.join(', ') + ')');
+    }
+  } catch (e) {
+    console.log('[migration] HTML-Fahrplan-Sync übersprungen: ' + e.message);
   }
 }
 

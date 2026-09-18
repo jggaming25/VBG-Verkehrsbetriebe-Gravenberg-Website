@@ -193,8 +193,15 @@ const AdminPage = {
 
   /* ------------------------------ LEITUNG ------------------------------ */
   async leitungView(body) {
-    const data = await API.get('/api/admin/users');
+    const [data, signupsData, strafeData, dutysData] = await Promise.all([API.get('/api/admin/users'), API.get('/api/admin/signups'), API.get('/api/strafe'), API.get('/api/admin/dutys')]);
     const users = data.users || [];
+    const shifts = signupsData.shifts || [];
+    const allSignups = signupsData.signups || [];
+    const fShift = parseInt(localStorage.getItem('vbg_admin_signup_shift') || '0', 10) || 0;
+    const items = allSignups.filter((s) => !fShift || s.shift_id === fShift);
+    const dutyNames = {};
+    for (const d of dutysData.duties || []) dutyNames[d.id] = d.code || (d.linien_unik && d.linien_unik.length ? d.linien_unik.join(' + ') : '#' + d.id);
+
     body.innerHTML = `
       <div class="panel">
         <div class="panel-head"><h2>Offene Strafzeit verwalten</h2></div>
@@ -228,7 +235,64 @@ const AdminPage = {
             </tbody>
           </table>
         </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Strafe-Dienste &amp; Konfiguration</h2></div>
+        ${shifts.length ? `
+          <div class="form-row">
+            <label class="field" style="margin-bottom:0">
+              <span class="field-label">Strafe-Dienste generieren in</span>
+              <select class="input" id="la-generate-shift">
+                ${shifts.map((s) => `<option value="${s.id}">${esc(s.title)} · ${esc(fmtDate(s.date))} ${esc(fmtTime(s.time_start))}</option>`).join('')}
+              </select>
+            </label>
+            <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end">
+              <button class="btn btn-soft" id="la-generate">Automatisch erstellen</button>
+            </div>
+          </div>` : '<p class="muted">Keine Shifts vorhanden.</p>'}
+        <form id="la-config-form" class="form-row mt">
+          <label class="field"><span class="field-label">Schwelle (h)</span><input class="input" id="cfg-schwelle" type="number" step="0.5" min="0.5" value="${esc(strafeData.schwelle)}"/></label>
+          <label class="field"><span class="field-label">Dauer (h)</span><input class="input" id="cfg-dauer" type="number" step="0.5" min="0.5" value="${esc(strafeData.dauer)}"/></label>
+          <label class="field"><span class="field-label">Name</span><input class="input" id="cfg-name" type="text" value="${esc(strafeData.name)}"/></label>
+          <div class="field" style="display:flex;align-items:flex-end"><button class="btn btn-ghost" type="submit">Konfiguration speichern</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Anmeldungen &amp; Reserve (Sign-Ups)</h2>
+          <select class="input" id="signup-fshift" style="max-width:260px">
+            <option value="0">Alle Shifts</option>
+            ${shifts.map((s) => `<option value="${s.id}" ${fShift === s.id ? 'selected' : ''}>${esc(s.title)} · ${esc(fmtDate(s.date))}</option>`).join('')}
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Nutzer</th><th>Shift</th><th>Wünsche</th><th>Verfügbar</th><th>Abarbeitung</th><th>Offene Strafzeit</th><th>Reserve</th><th>Status</th></tr></thead>
+            <tbody>
+              ${items.length ? items.map((s) => `
+                <tr>
+                  <td><b>${esc(s.display_name || s.username)}</b></td>
+                  <td class="muted-sm">${esc(s.shift_title)}<br/><span class="muted">${esc(fmtDate(s.shift_date))}</span></td>
+                  <td class="muted-sm">${s.status === 'reserve' ? '<span class="muted">– (Reserve)</span>' : (s.preferred_duty_ids || []).length ? s.preferred_duty_ids.map((id, i) => (i + 1) + '. ' + esc(dutyNames[id] || '#' + id)).join('<br/>') : 'Keine Präferenz'}${(s.reserve_duty_ids || []).length ? `<div style="color:var(--info);font-size:.78rem">Reserve: ${s.reserve_duty_ids.map((id) => esc(dutyNames[id] || '#' + id)).join(', ')}</div>` : ''}</td>
+                  <td class="muted-sm">${s.available_start ? esc(fmtTime(s.available_start)) + ' – ' + esc(fmtTime(s.available_end)) : 'Ganztags'}</td>
+                  <td class="muted-sm">${s.strafe_abarbeitung ? 'Ja' : 'Nein'}</td>
+                  <td class="num">${s.open_hours ? s.open_hours + ' h' : '0 h'}</td>
+                  <td class="muted-sm">${s.status === 'reserve' ? (s.reserve_reason || 'Reserveliste') + (s.reserve_start ? ' · ' + esc(fmtTime(s.reserve_start)) + '–' + esc(fmtTime(s.reserve_end)) : '') : (s.reserve_duty_ids || []).length ? 'Konflikt-Wünsche' : '–'}</td>
+                  <td>${s.status === 'reserve'
+                    ? '<span class="badge badge-blue">Reserve</span>'
+                    : s.strafe_abarbeitung
+                      ? '<span class="badge badge-amber">Abarbeitung</span>'
+                      : '<span class="badge badge-green">Angemeldet</span>'}</td>
+                </tr>`).join('') : '<tr><td colspan="8" class="muted">Keine Anmeldungen für diesen Filter.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
       </div>`;
+
+    body.querySelector('#signup-fshift').addEventListener('change', (e) => {
+      localStorage.setItem('vbg_admin_signup_shift', String(e.target.value));
+      App.reload();
+    });
 
     let action = 'add';
     body.querySelectorAll('#strafe-adjust-form button[type="submit"]').forEach((b) => {
@@ -244,6 +308,30 @@ const AdminPage = {
           action
         });
         App.toast(action === 'subtract' ? `${r.changed_hours || 0} h abgezogen.` : 'Strafzeit erfasst.');
+        App.reload();
+      } catch (err) { App.toast(err.message, 'error'); }
+    });
+
+    const genBtn = body.querySelector('#la-generate');
+    if (genBtn) {
+      genBtn.addEventListener('click', async () => {
+        const shiftId = parseInt(body.querySelector('#la-generate-shift').value, 10);
+        try {
+          const r = await API.post('/api/admin/strafe-generate', { shift_id: shiftId });
+          App.toast(r.created > 0 ? r.created + ' Strafe-Dienst(e) erstellt.' : 'Keine neuen Einträge (keine offenen Strafzeiten über der Schwelle).');
+          App.reload();
+        } catch (err) { App.toast(err.message, 'error'); }
+      });
+    }
+    body.querySelector('#la-config-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await API.post('/api/admin/strafe-config', {
+          schwelle_hours: parseFloat(body.querySelector('#cfg-schwelle').value),
+          dauer_hours: parseFloat(body.querySelector('#cfg-dauer').value),
+          name: body.querySelector('#cfg-name').value
+        });
+        App.toast('Konfiguration gespeichert.');
         App.reload();
       } catch (err) { App.toast(err.message, 'error'); }
     });
@@ -268,6 +356,7 @@ const AdminPage = {
           <label class="field"><span class="field-label">Status</span>
             <select class="input" id="s-status"><option value="draft">Entwurf</option><option value="published">Veröffentlicht</option></select>
           </label>
+          <label class="field"><span class="field-label">Reserve-Plätze</span><input class="input" type="number" id="s-reservecap" min="0" max="20" value="5" title="Max. gleichzeitige Reserve-Einteilungen für diese Shift (0 = Standard aus Meldung &amp; Regeln)"/></label>
           <div class="field" style="grid-column:1/-1"><span class="field-label">Details</span>
             <textarea class="input" id="s-desc" rows="3" placeholder="Beschreibung / Hinweise zum Tag"></textarea>
           </div>
@@ -293,7 +382,7 @@ const AdminPage = {
         <div class="panel-head"><h2>Shifts</h2><span class="muted-sm">${shifts.length}</span></div>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>Titel</th><th>Datum</th><th>Zeit</th><th>Linien</th><th>Status</th><th>Sign-Up</th><th></th></tr></thead>
+            <thead><tr><th>Titel</th><th>Datum</th><th>Zeit</th><th>Linien</th><th>Reserve</th><th>Status</th><th>Sign-Up</th><th></th></tr></thead>
             <tbody>
               ${shifts.map((s) => `
                 <tr>
@@ -301,6 +390,7 @@ const AdminPage = {
                   <td>${esc(fmtDate(s.date))}</td>
                   <td class="num">${esc(fmtTime(s.time_start))} – ${esc(fmtTime(s.time_end))}</td>
                   <td>${(s.linien || []).length ? (s.linien || []).map((l) => `<span class="badge">${esc(l)}</span>`).join(' ') : (s.auto_dienste ? '<span class="badge badge-gray">?</span>' : '—')}</td>
+                  <td>${s.reserve_cap ? `<span class="badge badge-blue">${s.reserve_cap}</span>` : '<span class="badge badge-gray">Standard</span>'}</td>
                   <td>${s.status === 'published' ? '<span class="badge badge-green">Veröffentlicht</span>' : '<span class="badge badge-gray">Entwurf</span>'}</td>
                   <td>${s.signup_state === 'offen' ? '<span class="badge badge-green">offen</span>' : s.signup_state === 'geschlossen' ? '<span class="badge badge-amber">geschlossen</span>' : s.signup_state === 'vorbei' ? '<span class="badge badge-gray">vorbei</span>' : '—'}</td>
                   <td style="white-space:nowrap">
@@ -344,6 +434,7 @@ const AdminPage = {
           betrieb_von: body.querySelector('#s-bvon').value,
           betrieb_bis: body.querySelector('#s-bbis').value,
           status: body.querySelector('#s-status').value,
+          reserve_cap: parseInt(body.querySelector('#s-reservecap').value, 10) || null,
           linien: checkedLines(),
           auto_generate: body.querySelector('#s-auto').checked
         };
@@ -1088,6 +1179,7 @@ const AdminPage = {
           <label class="field"><span class="field-label">Sign-Up schließt (Minuten vor Shiftbeginn)</span><input class="input" type="number" id="r-close" min="1" value="${esc(s.signup_close_minutes)}"/></label>
           <label class="field"><span class="field-label">Dienstbeginn (Minuten vor Shiftstart)</span><input class="input" type="number" id="r-start" min="0" value="${esc(s.staff_start_minutes)}"/></label>
           <label class="field"><span class="field-label">Max. Duty-Wünsche bei der Anmeldung</span><input class="input" type="number" id="r-wishes" min="1" max="10" value="${esc(s.max_duty_wishes)}"/></label>
+          <label class="field"><span class="field-label">Reserve-Plätze (global, pro Shift)</span><input class="input" type="number" id="r-reserve" min="0" max="20" value="${esc(s.reserve_plaetze_pro_shift)}"/></label>
           <div class="field" style="display:flex;align-items:flex-end"><button class="btn btn-ghost" type="submit">Speichern</button></div>
         </form>
       </div>
@@ -1109,7 +1201,8 @@ const AdminPage = {
         await API.post('/api/admin/settings', {
           signup_close_minutes: parseInt(body.querySelector('#r-close').value, 10),
           staff_start_minutes: parseInt(body.querySelector('#r-start').value, 10),
-          max_duty_wishes: parseInt(body.querySelector('#r-wishes').value, 10)
+          max_duty_wishes: parseInt(body.querySelector('#r-wishes').value, 10),
+          reserve_plaetze_pro_shift: parseInt(body.querySelector('#r-reserve').value, 10)
         });
         App.toast('Regeln gespeichert.');
         App.reload();

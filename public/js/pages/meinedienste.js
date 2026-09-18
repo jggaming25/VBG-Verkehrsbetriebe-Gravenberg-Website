@@ -29,7 +29,9 @@ const MeineDienstePage = {
     }
 
     const desc = (a) => {
-      if (a.type === 'bus') return '🚌 ' + (a.linie || a.code);
+      if (a.type === 'bus') return '🚌 ' + ((a.linien_unik && a.linien_unik.length)
+        ? a.linien_unik.map((l) => this.linieLabel(l)).join(' → ')
+        : (a.linie || a.code));
       if (a.type === 'wechsel') return '🔄 Linienwechsel ' + (a.wechsel_from_name || '?') + ' → ' + (a.wechsel_to_name || '?');
       return '🛍️ ' + (a.standort || 'Kundenservice-Strafe');
     };

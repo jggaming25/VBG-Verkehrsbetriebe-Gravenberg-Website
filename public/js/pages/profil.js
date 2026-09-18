@@ -79,6 +79,18 @@ const ProfilPage = {
       </div>
 
       <div class="panel">
+        <div class="panel-head"><h2>Benachrichtigungen</h2></div>
+        <p class="panel-sub">Erhalte in der App Hinweise zu neuen Einteilungen, Strafzeiten, Activity-Einträgen und deiner Anmeldung.</p>
+        <form id="notify-form">
+          <label class="check-line">
+            <input type="checkbox" id="nf-enabled" ${u.notifications ? 'checked' : ''}/>
+            <span>Benachrichtigungen empfangen</span>
+          </label>
+          <button class="btn btn-ghost btn-sm mt" type="submit">Speichern</button>
+        </form>
+      </div>
+
+      <div class="panel">
         <div class="panel-head"><h2>Passwort ändern</h2></div>
         <form id="pw-form">
           <div class="form-row">
@@ -133,6 +145,22 @@ const ProfilPage = {
         App.user = data.user;
         App.applyTheme();
         App.toast('Darstellung gespeichert.');
+      } catch (err) { App.toast(err.message, 'error'); }
+    });
+
+    container.querySelector('#notify-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const data = await API.post('/api/profile', {
+          display_name: App.user.display_name,
+          country_code: App.user.country_code || '',
+          language: App.user.language || 'de',
+          theme: App.user.theme || 'auto',
+          notifications: container.querySelector('#nf-enabled').checked
+        });
+        App.user = data.user;
+        App.toast('Benachrichtigungen gespeichert.');
+        if (!data.user.notifications) App.renderNotifyBadge(0);
       } catch (err) { App.toast(err.message, 'error'); }
     });
 

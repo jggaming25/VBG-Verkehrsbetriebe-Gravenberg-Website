@@ -36,7 +36,8 @@ async function getSettings(t) {
     strafe_schwelle_hours: parseFloat(s.strafe_schwelle_hours || '3'),
     strafe_dauer_hours: parseFloat(s.strafe_dauer_hours || '1.5'),
     strafe_name: s.strafe_name || 'Kundenservice-Strafe',
-    max_duty_wishes: parseInt(s.max_duty_wishes || '5', 10)
+    max_duty_wishes: parseInt(s.max_duty_wishes || '5', 10),
+    reserve_plaetze_pro_shift: parseInt(s.reserve_plaetze_pro_shift || '5', 10)
   };
 }
 
@@ -54,6 +55,7 @@ function publicUser(u) {
     country_code: u.country_code || '',
     language: u.language || 'de',
     theme: u.theme || 'auto',
+    notifications: !!u.notifications,
     created_at: u.created_at
   };
 }
@@ -184,8 +186,9 @@ app.post('/api/profile', requireAuth, async (req, res) => {
   const country_code = String(req.body.country_code || '').slice(0, 4);
   const language = String(req.body.language || 'de') === 'en' ? 'en' : 'de';
   const theme = ['light', 'dark', 'auto'].includes(req.body.theme) ? req.body.theme : 'auto';
-  await db.run(`UPDATE users SET display_name = ?, avatar = ?, country_code = ?, language = ?, theme = ? WHERE id = ?`,
-    [display_name || req.user.username, avatar, country_code, language, theme, req.user.id]);
+  const notifications = req.body.notifications === undefined ? (req.user.notifications ? 1 : 0) : (req.body.notifications ? 1 : 0);
+  await db.run(`UPDATE users SET display_name = ?, avatar = ?, country_code = ?, language = ?, theme = ?, notifications = ? WHERE id = ?`,
+    [display_name || req.user.username, avatar, country_code, language, theme, notifications, req.user.id]);
   const u = await loadUser(req.user.id);
   res.json({ user: publicUser(u) });
 });
@@ -230,6 +233,7 @@ function shiftRow(r) {
     time_start: r.time_start, time_end: r.time_end,
     host_id: r.host_id, host: r.host || '', status: r.status, created_at: r.created_at,
     linien,
+    reserve_cap: r.reserve_cap || null,
     auto_dienste: !!r.auto_dienste,
     betrieb_von: r.betrieb_von || '',
     betrieb_bis: r.betrieb_bis || ''
@@ -292,7 +296,14 @@ async function attachFahrten(duties) {
   );
   const byDuty = {};
   for (const f of rows) (byDuty[f.duty_id] = byDuty[f.duty_id] || []).push(f);
-  for (const d of duties) d.fahrten = byDuty[d.id] || [];
+  for (const d of duties) {
+    d.fahrten = byDuty[d.id] || [];
+    const seen = [];
+    for (const f of d.fahrten) {
+      if (f.linie && !seen.includes(String(f.linie))) seen.push(String(f.linie));
+    }
+    d.linien_unik = seen;
+  }
   return duties;
 }
 
@@ -374,13 +385,21 @@ app.get('/api/meine-dienste', requireAuth, async (req, res) => {
   for (const f of fahrtenRows) (fahrtenByDuty[f.duty_id] = fahrtenByDuty[f.duty_id] || []).push(f);
   res.json({
     shifts,
-    assignments: assignments.map((a) => ({
-      id: a.id, duty_id: a.duty_id, shift_id: a.shift_id, shift_title: a.shift_title, shift_date: a.shift_date,
-      code: a.duty_code, start: a.duty_start, end: a.duty_end, type: a.duty_type,
-      linie: a.linie, standort: a.standort, wechsel_from_name: a.wechsel_from_name, wechsel_to_name: a.wechsel_to_name,
-      kind: a.kind, status: a.status, fahrzeug: a.fahrzeug,
-      fahrten: fahrtenByDuty[a.duty_id] || []
-    }))
+    assignments: assignments.map((a) => {
+      const fa = fahrtenByDuty[a.duty_id] || [];
+      const seen = [];
+      for (const f of fa) {
+        if (f.linie && !seen.includes(String(f.linie))) seen.push(String(f.linie));
+      }
+      return {
+        id: a.id, duty_id: a.duty_id, shift_id: a.shift_id, shift_title: a.shift_title, shift_date: a.shift_date,
+        code: a.duty_code, start: a.duty_start, end: a.duty_end, type: a.duty_type,
+        linie: a.linie, standort: a.standort, wechsel_from_name: a.wechsel_from_name, wechsel_to_name: a.wechsel_to_name,
+        kind: a.kind, status: a.status, fahrzeug: a.fahrzeug,
+        linien_unik: seen,
+        fahrten: fa
+      };
+    })
   });
 });
 
@@ -400,10 +419,15 @@ app.get('/api/anmeldung', requireAuth, async (req, res) => {
   for (const sh of [...openShifts, ...rows.filter((r) => (mySignups || []).some((m) => m.shift_id === r.id))]) {
     dutiesByShift[sh.id] = await dutiesForShift(sh.id);
   }
-  const standorte = await db.all(`SELECT * FROM standorte WHERE active = 1 ORDER BY sort, name`);
+const standorte = await db.all(`SELECT * FROM standorte WHERE active = 1 ORDER BY sort, name`);
   const linien = await db.all(`SELECT * FROM linien WHERE active = 1 ORDER BY sort, name`);
+  const openStrafzeit = await openStrafeHours(req.user.id);
   res.json({
     open_shifts: openShifts.map(shiftRow),
+    open_strafzeit: openStrafzeit,
+    schwelle: settings.strafe_schwelle_hours || 3,
+    strafe_name: settings.strafe_name,
+    reserve_plaetze_pro_shift: settings.reserve_plaetze_pro_shift,
     signups: mySignups.map((s) => ({
       id: s.id, shift_id: s.shift_id, shift_title: s.shift_title, shift_date: s.shift_date,
       shift_start: s.shift_start, shift_end: s.shift_end, shift_status: s.shift_status,
@@ -413,13 +437,20 @@ app.get('/api/anmeldung', requireAuth, async (req, res) => {
       strafe_abarbeitung: !!s.strafe_abarbeitung,
       preferred_standort_id: s.preferred_standort_id || null,
       available_start: s.available_start || '', available_end: s.available_end || '',
-      needs_senior: !!s.needs_senior, note: s.note || '', status: s.status
+      needs_senior: !!s.needs_senior, note: s.note || '', status: s.status || 'angemeldet',
+      reserve_duty_ids: (s.reserve_duty_ids || '').split(',').filter(Boolean).map((x) => parseInt(x, 10)),
+      reserve_start: s.reserve_start || '', reserve_end: s.reserve_end || '', reserve_reason: s.reserve_reason || ''
     })),
     duties_by_shift: dutiesByShift,
     standorte, linien,
     settings
   });
 });
+
+async function openStrafeHours(userId) {
+  const r = await db.get(`SELECT COALESCE(SUM(hours - covered), 0) AS h FROM strafzeiten WHERE user_id = ? AND hours > covered`, [userId]);
+  return Math.round((r && r.h ? r.h : 0) * 10) / 10;
+}
 
 app.post('/api/anmeldung', requireAuth, async (req, res) => {
   const settings = await getSettings();
@@ -428,35 +459,75 @@ app.post('/api/anmeldung', requireAuth, async (req, res) => {
   if (!shift || shift.status !== 'published') return res.status(400).json({ error: 'Shift nicht gefunden.' });
   if (signupState(shift, settings, new Date()) !== 'offen') return res.status(400).json({ error: 'Die Anmeldung fÃ¼r diese Shift ist geschlossen.' });
 
-  const rawWish = Array.isArray(req.body.preferred_duty_ids) ? req.body.preferred_duty_ids : [];
+const rawWish = Array.isArray(req.body.preferred_duty_ids) ? req.body.preferred_duty_ids : [];
   const maxWish = settings.max_duty_wishes;
   const wished = rawWish.slice(0, maxWish).map((x) => parseInt(x, 10)).filter((x) => Number.isInteger(x) && x > 0);
-  const dutyIds = await db.all(`SELECT id FROM dutys WHERE shift_id = ?`, [shiftId]);
-  const validSet = new Set(dutyIds.map((d) => d.id));
-  const preferred_duty_ids = [...new Set(wished.filter((x) => validSet.has(x)))].slice(0, maxWish);
+  const dutyRows = await db.all(`SELECT id, start, end FROM dutys WHERE shift_id = ?`, [shiftId]);
+  const validSet = new Set(dutyRows.map((d) => d.id));
+  let preferred_duty_ids = [...new Set(wished.filter((x) => validSet.has(x)))].slice(0, maxWish);
   const preferred_ks_role = String(req.body.preferred_ks_role || '').slice(0, 60);
   const volunteer_strafe = req.body.volunteer_strafe ? 1 : 0;
-  const strafe_abarbeitung = req.body.strafe_abarbeitung ? 1 : 0;
   const preferred_standort_id = parseInt(req.body.preferred_standort_id || '0', 10) || null;
   const available_start = String(req.body.available_start || '').slice(0, 20);
   const available_end = String(req.body.available_end || '').slice(0, 20);
   const needs_senior = req.body.needs_senior ? 1 : 0;
   const note = String(req.body.note || '').trim().slice(0, 500);
 
-  const existing = await db.get(`SELECT id FROM signups WHERE shift_id = ? AND user_id = ?`, [shiftId, req.user.id]);
+  const openH = await openStrafeHours(req.user.id);
+  const schwelle = settings.strafe_schwelle_hours || 3;
+  let status = 'angemeldet';
+  let reserve_reason = '';
+  let reserve_duty_ids = [];
+  let strafe_abarbeitung = req.body.strafe_abarbeitung ? 1 : 0;
+
+  if (openH >= schwelle) {
+    strafe_abarbeitung = 1;
+    preferred_duty_ids = [];
+  } else if (strafe_abarbeitung) {
+    preferred_duty_ids = [];
+  }
+
+  if (available_start && available_end && preferred_duty_ids.length) {
+    const ok = [], conflicted = [];
+    for (const wid of preferred_duty_ids) {
+      const d = dutyRows.find((x) => x.id === wid);
+      if (d && dutyWithinAvailability(d, { available_start, available_end })) ok.push(wid);
+      else conflicted.push(wid);
+    }
+    preferred_duty_ids = ok;
+    reserve_duty_ids = conflicted;
+  }
+
+  if (strafe_abarbeitung && openH <= 0) {
+    status = 'reserve';
+    reserve_reason = 'Keine offene Strafzeit – als Reserve eingetragen';
+  }
+  if (!reserve_duty_ids.length && status !== 'reserve') {
+    reserve_reason = '';
+  }
+  let reserve_start = available_start, reserve_end = available_end;
+  if (!reserve_duty_ids.length && status === 'angemeldet') {
+    reserve_start = '';
+    reserve_end = '';
+  }
+
+const existing = await db.get(`SELECT id FROM signups WHERE shift_id = ? AND user_id = ?`, [shiftId, req.user.id]);
   if (existing) {
     await db.run(`
       UPDATE signups SET preferred_duty_ids = ?, preferred_ks_role = ?, volunteer_strafe = ?, strafe_abarbeitung = ?, preferred_standort_id = ?,
-      available_start = ?, available_end = ?, needs_senior = ?, note = ?, updated_at = datetime('now')
+      available_start = ?, available_end = ?, needs_senior = ?, note = ?,
+      reserve_duty_ids = ?, reserve_start = ?, reserve_end = ?, reserve_reason = ?, status = ?, updated_at = datetime('now')
       WHERE id = ?`,
-      [preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note, existing.id]);
+      [preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note,
+       reserve_duty_ids.join(','), reserve_start, reserve_end, reserve_reason, status, existing.id]);
   } else {
     await db.run(`
-      INSERT INTO signups (shift_id, user_id, preferred_duty_ids, preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [shiftId, req.user.id, preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note]);
+      INSERT INTO signups (shift_id, user_id, preferred_duty_ids, preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note, reserve_duty_ids, reserve_start, reserve_end, reserve_reason, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [shiftId, req.user.id, preferred_duty_ids.join(','), preferred_ks_role, volunteer_strafe, strafe_abarbeitung, preferred_standort_id, available_start, available_end, needs_senior, note, reserve_duty_ids.join(','), reserve_start, reserve_end, reserve_reason, status]);
   }
-  res.json({ ok: true });
+  await notify(req.user.id, 'signup', 'Anmeldung gespeichert', 'Shift #' + shiftId + (status === 'reserve' ? ' – auf der Reserveliste' : ''));
+  res.json({ ok: true, status, reserve_reason });
 });
 
 app.delete('/api/anmeldung/:shiftId', requireAuth, async (req, res) => {
@@ -473,6 +544,35 @@ app.delete('/api/anmeldung/:shiftId', requireAuth, async (req, res) => {
   if (confirmed) return res.status(400).json({ error: 'FÃ¼r diese Shift bist du bereits fest eingeteilt. Wende dich an die Leitung.' });
   await db.run(`DELETE FROM signups WHERE shift_id = ? AND user_id = ?`, [shiftId, req.user.id]);
   res.json({ ok: true });
+});
+
+app.get('/api/admin/signups', requireAuth, requireScheduler, async (req, res) => {
+  const shiftId = parseInt(req.query.shift_id || '0', 10);
+  const shifts = (await db.all(`SELECT * FROM shifts ORDER BY date DESC, time_start DESC, id DESC`)).map(shiftRow);
+  const rows = await db.all(`
+    SELECT sg.*, u.username, u.display_name, s.title AS shift_title, s.date AS shift_date,
+           s.time_start AS shift_start, s.time_end AS shift_end,
+           (SELECT COALESCE(SUM(st.hours - st.covered), 0) FROM strafzeiten st WHERE st.user_id = sg.user_id AND st.hours > st.covered) AS open_hours
+    FROM signups sg
+    JOIN users u ON u.id = sg.user_id
+    JOIN shifts s ON s.id = sg.shift_id
+    ${shiftId ? 'WHERE sg.shift_id = ?' : ''}
+    ORDER BY s.date DESC, s.time_start DESC, sg.status, u.username`, shiftId ? [shiftId] : []);
+  res.json({
+    shifts,
+    signups: rows.map((s) => ({
+      id: s.id, shift_id: s.shift_id, shift_title: s.shift_title, shift_date: s.shift_date,
+      shift_start: s.shift_start, shift_end: s.shift_end,
+      user_id: s.user_id, username: s.username, display_name: s.display_name,
+      preferred_duty_ids: (s.preferred_duty_ids || '').split(',').filter(Boolean).map((x) => parseInt(x, 10)),
+      reserve_duty_ids: (s.reserve_duty_ids || '').split(',').filter(Boolean).map((x) => parseInt(x, 10)),
+      reserve_start: s.reserve_start || '', reserve_end: s.reserve_end || '', reserve_reason: s.reserve_reason || '',
+      available_start: s.available_start || '', available_end: s.available_end || '',
+      volunteer_strafe: !!s.volunteer_strafe, strafe_abarbeitung: !!s.strafe_abarbeitung,
+      needs_senior: !!s.needs_senior, status: s.status || 'angemeldet',
+      open_hours: Math.round((s.open_hours || 0) * 10) / 10
+    }))
+  });
 });
 
 /* -------------------------------- Autoshift -------------------------------- */
@@ -542,6 +642,8 @@ async function runAutoshift(shiftId, actor) {
     pu.assigned.push(duty.id);
     pu.ranges.push({ start: new Date((duty.start || '') + ':00'), end: new Date((duty.end || '') + ':00') });
     slotMap.set(duty.id + ':' + kind, { user_id: user.user_id });
+    await notify(user.user_id, 'zuweisung', 'Dienst-Vorschlag',
+      'Der Autoshift schlägt dir ' + (kind === 'reserve' ? 'als Reserve ' : '') + duty.code + ' vor.');
   };
 
   const strafeDuties = duties.filter((d) => d.type === 'strafe');
@@ -618,6 +720,7 @@ app.post('/api/admin/autoshift', requireAuth, requireScheduler, async (req, res)
 });
 
 app.post('/api/admin/assignments', requireAuth, requireScheduler, async (req, res) => {
+  const settings = await getSettings();
   const dutyId = parseInt(req.body.duty_id, 10);
   const userId = req.body.user_id ? parseInt(req.body.user_id, 10) : null;
   const kind = req.body.kind === 'reserve' ? 'reserve' : 'haupt';
@@ -634,6 +737,30 @@ app.post('/api/admin/assignments', requireAuth, requireScheduler, async (req, re
     }
     const signup = await db.get(`SELECT * FROM signups WHERE shift_id = ? AND user_id = ?`, [duty.shift_id, userId]);
     if (!dutyWithinAvailability(duty, signup)) return res.status(400).json({ error: 'Der Dienst liegt auÃŸerhalb des Anmeldungszeitraums dieses Nutzers.' });
+    const openH = await openStrafeHours(userId);
+    if (duty.type !== 'strafe' && kind === 'haupt' && status === 'bestaetigt' && openH >= (settings.strafe_schwelle_hours || 3) && !(signup && signup.strafe_abarbeitung)) {
+      return res.status(400).json({ error: 'Offene Strafzeit Ã¼ber der Schwelle – zunÃ¤chst Strafe-Abarbeitung eintragen.' });
+    }
+    if (kind === 'reserve') {
+      const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [duty.shift_id]);
+      const cap = (shift && shift.reserve_cap) || settings.reserve_plaetze_pro_shift || 5;
+      const used = await db.get(`
+        SELECT COUNT(*) AS n FROM assignments a JOIN dutys d ON d.id = a.duty_id
+        WHERE d.shift_id = ? AND a.kind = 'reserve' AND a.status IN ('vorgeschlagen','bestaetigt') AND a.user_id IS NOT NULL`, [duty.shift_id]);
+      if ((used.n || 0) >= cap) return res.status(400).json({ error: 'Reserve-Quote fÃ¼r diese Shift erreicht (' + cap + ').' });
+      const dStart = toDm(duty.start), dEnd = toDm(duty.end);
+      if (dStart !== null && dEnd !== null) {
+        const overlaps = await db.all(`
+          SELECT d.start AS ds, d.end AS de FROM assignments a JOIN dutys d ON d.id = a.duty_id
+          WHERE a.kind = 'reserve' AND a.status IN ('vorgeschlagen','bestaetigt') AND a.user_id IS NOT NULL`);
+        let n = 0;
+        for (const o of overlaps) {
+          const os = toDm(o.ds), oe = toDm(o.de);
+          if (os !== null && oe !== null && dStart < oe && os < dEnd) n++;
+        }
+        if (n >= 5) return res.status(400).json({ error: 'Maximal 5 zeitgleich Ã¼berlappende Reserve-Einteilungen erlaubt.' });
+      }
+    }
     let grund = null;
     const shouldWorkOff = kind === 'haupt' && status === 'bestaetigt' && duty.type !== 'strafe' && signup && signup.strafe_abarbeitung;
     if (shouldWorkOff && !(existing && existing.user_id === userId && String(existing.grund || '').includes('Strafe-Abarbeitung'))) {
@@ -646,9 +773,11 @@ app.post('/api/admin/assignments', requireAuth, requireScheduler, async (req, re
           : 'Strafe-Abarbeitung gewünscht, keine offene Strafzeit';
       }
     }
-    await db.run(`DELETE FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
+await db.run(`DELETE FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
     await db.run(`INSERT INTO assignments (duty_id, user_id, kind, status, source, grund, assigned_by) VALUES (?, ?, ?, ?, 'manual', ?, ?)`,
       [dutyId, userId, kind, status, grund, req.user.id]);
+    await notify(userId, 'zuweisung', 'Neue Einteilung',
+      status === 'bestaetigt' ? 'Du wurdest ' + (kind === 'reserve' ? 'als Reserve ' : '') + 'fÃ¼r ' + duty.code + ' eingeteilt.' : 'Du hast einen Vorschlag fÃ¼r ' + duty.code + ' erhalten.');
   } else {
     await db.run(`DELETE FROM assignments WHERE duty_id = ? AND kind = ?`, [dutyId, kind]);
   }
@@ -742,6 +871,8 @@ app.post('/api/admin/activity', requireAuth, requireScheduler, async (req, res) 
   await db.run(`
     INSERT INTO activity (assignment_id, duty_id, user_id, result, note, marked_by) VALUES (?, ?, ?, ?, ?, ?)`,
     [req.body.assignment_id || null, dutyId, userId, result, String(req.body.note || '').slice(0, 300), req.user.id]);
+  await notify(userId, 'activity', result === 'teilgenommen' ? 'Activity bestätigt' : 'Activity: Fehlen erfasst',
+    'Deine Teilnahme (' + (result === 'teilgenommen' ? 'teilgenommen' : 'nicht teilgenommen') + ') wurde eingetragen.');
   if (req.body.auto_strafe && result === 'nicht_teilgenommen') {
     const duty = await db.get(`SELECT * FROM dutys WHERE id = ?`, [dutyId]);
     const h = dutyHours(duty.start, duty.end) || 1;
@@ -1006,7 +1137,8 @@ app.post('/api/admin/strafe', requireAuth, requireScheduler, async (req, res) =>
   if (!userId || !(hours > 0) || hours > 120) return res.status(400).json({ error: 'UngÃ¼ltige Eingabe.' });
   const u = await db.get(`SELECT * FROM users WHERE id = ?`, [userId]);
   if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
-  await db.run(`INSERT INTO strafzeiten (user_id, hours, reason, entered_by) VALUES (?, ?, ?, ?)`, [userId, hours, reason, req.user.id]);
+await db.run(`INSERT INTO strafzeiten (user_id, hours, reason, entered_by) VALUES (?, ?, ?, ?)`, [userId, hours, reason, req.user.id]);
+  await notify(userId, 'strafe', 'Strafzeit erfasst', Math.round(hours * 10) / 10 + ' h' + (reason ? ': ' + reason : ''));
   res.json({ ok: true });
 });
 
@@ -1018,8 +1150,9 @@ app.post('/api/admin/strafe-adjust', requireAuth, requireScheduler, async (req, 
   if (!userId || !(hours > 0) || hours > 120) return res.status(400).json({ error: 'UngÃ¼ltige Eingabe.' });
   const u = await db.get(`SELECT * FROM users WHERE id = ?`, [userId]);
   if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
-  if (action === 'add') {
+if (action === 'add') {
     await db.run(`INSERT INTO strafzeiten (user_id, hours, reason, entered_by) VALUES (?, ?, ?, ?)`, [userId, hours, reason || 'Manuell erfasst', req.user.id]);
+    await notify(userId, 'strafe', 'Strafzeit erfasst', Math.round(hours * 10) / 10 + ' h' + (reason ? ': ' + reason : ''));
     return res.json({ ok: true, changed_hours: hours });
   }
   const covered = await coverStrafe(userId, hours, []);
@@ -1070,13 +1203,15 @@ app.post('/api/admin/strafe-generate', requireAuth, requireScheduler, async (req
     await coverStrafe(rec.user_id, dauer, reasons);
     const duty = await db.get(`SELECT * FROM dutys WHERE id = ?`, [dutyRes.lastRowId]);
     const standorte = await db.all(`SELECT * FROM standorte WHERE active = 1 ORDER BY sort, name LIMIT 1`);
-    if (standorte.length) {
-      await db.run(`UPDATE dutys SET standort_id = ? WHERE id = ?`, [standorte[0].id, duty.id]);
+    const standortId = (standorte[0] || {}).id || null;
+    if (standortId) {
+      await db.run(`UPDATE dutys SET standort_id = ? WHERE id = ?`, [standortId, duty.id]);
     }
-    await db.run(`UPDATE dutys SET standort_id = ?, note = ? WHERE id = ?`, [standorte[0].id, duty.note + ' Grund: ' + (reasons.join(' Â· ') || 'offene Strafzeit'), duty.id]);
+    await db.run(`UPDATE dutys SET standort_id = ?, note = ? WHERE id = ?`, [standortId, duty.note + ' Grund: ' + (reasons.join(' Â· ') || 'offene Strafzeit'), duty.id]);
     const grund = reasons.join(' Â· ') || 'offene Strafzeit';
     await db.run(`INSERT INTO assignments (duty_id, user_id, kind, status, source, grund, assigned_by) VALUES (?, ?, 'haupt', 'bestaetigt', 'strafe', ?, ?)`,
       [duty.id, rec.user_id, grund, req.user.id]);
+    await notify(rec.user_id, 'zuweisung', 'Strafe-Dienst zugewiesen', 'Du wurdest für ' + code + ' eingeteilt – Strafzeit wird abgearbeitet.');
     existingSet.add(rec.user_id);
     created.push({ user_id: rec.user_id, code });
   }
@@ -1102,10 +1237,12 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req, res) => {
   const signup_close = parseInt(req.body.signup_close_minutes, 10);
   const staff_start = parseInt(req.body.staff_start_minutes, 10);
   const max_wishes = parseInt(req.body.max_duty_wishes, 10);
+  const reserve_plaetze = parseInt(req.body.reserve_plaetze_pro_shift, 10);
   if (!(signup_close > 0)) return res.status(400).json({ error: 'UngÃ¼ltiger Wert.' });
   await db.run(`UPDATE settings SET value = ? WHERE key = 'signup_close_minutes'`, [String(signup_close)]);
   await db.run(`UPDATE settings SET value = ? WHERE key = 'staff_start_minutes'`, [String(staff_start || 0)]);
   await db.run(`UPDATE settings SET value = ? WHERE key = 'max_duty_wishes'`, [String(max_wishes > 0 && max_wishes <= 10 ? max_wishes : 5)]);
+  await db.run(`UPDATE settings SET value = ? WHERE key = 'reserve_plaetze_pro_shift'`, [String(reserve_plaetze > 0 ? reserve_plaetze : 5)]);
   res.json({ ok: true });
 });
 
@@ -1158,9 +1295,17 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
 app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (id === req.user.id) return res.status(400).json({ error: 'Du kannst dein eigenes Konto nicht lÃ¶schen.' });
-  const u = await db.get(`SELECT id FROM users WHERE id = ?`, [id]);
+  const u = await db.get(`SELECT * FROM users WHERE id = ?`, [id]);
   if (!u) return res.status(400).json({ error: 'Nutzer nicht gefunden.' });
-  await db.run(`DELETE FROM users WHERE id = ?`, [id]);
+  try {
+    await db.run(`DELETE FROM users WHERE id = ?`, [id]);
+  } catch (e) {
+    await db.run(`
+      UPDATE users SET active = 0, username = 'geloescht_' || id, display_name = 'GelÃ¶schtes Konto',
+        password_hash = '!', must_change_password = 1, avatar = '', country_code = '', language = 'de',
+        theme = 'auto', notifications = 0
+      WHERE id = ?`, [id]);
+  }
   res.json({ ok: true });
 });
 
@@ -1189,6 +1334,7 @@ function parseShiftBody(b) {
     status: b.status === 'published' ? 'published' : 'draft',
     linien,
     auto_dienste: (b.auto_generate || b.auto_dienste) ? 1 : 0,
+    reserve_cap: parseInt(b.reserve_cap || '0', 10) || null,
     betrieb_von: String(b.betrieb_von || '').slice(0, 5),
     betrieb_bis: String(b.betrieb_bis || '').slice(0, 5)
   };
@@ -1204,8 +1350,8 @@ app.get('/api/admin/shifts', requireAuth, requireAdmin, async (req, res) => {
 app.post('/api/admin/shifts', requireAuth, requireAdmin, async (req, res) => {
   const b = parseShiftBody(req.body);
   if (!b.title || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) return res.status(400).json({ error: 'Titel und Datum angeben.' });
-  const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, linien, auto_dienste, betrieb_von, betrieb_bis, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.title, b.description, b.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(b.linien), b.auto_dienste, b.betrieb_von, b.betrieb_bis, req.user.id]);
+  const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, linien, auto_dienste, reserve_cap, betrieb_von, betrieb_bis, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.title, b.description, b.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(b.linien), b.auto_dienste, b.reserve_cap, b.betrieb_von, b.betrieb_bis, req.user.id]);
   let generated = 0, fahrtCount = 0;
   if (b.auto_dienste && b.linien.length) {
     const r = await generateDienstplanForShift(res2.lastRowId);
@@ -1328,8 +1474,9 @@ app.put('/api/admin/shifts/:id', requireAuth, requireAdmin, async (req, res) => 
   const autoOut = b.linien.length ? b.auto_dienste : shift.auto_dienste;
   const bvonOut = req.body.betrieb_von !== undefined ? b.betrieb_von : (shift.betrieb_von || '');
   const bbisOut = req.body.betrieb_bis !== undefined ? b.betrieb_bis : (shift.betrieb_bis || '');
-  await db.run(`UPDATE shifts SET title = ?, description = ?, date = ?, time_start = ?, time_end = ?, host_id = ?, status = ?, linien = ?, auto_dienste = ?, betrieb_von = ?, betrieb_bis = ? WHERE id = ?`,
-    [b.title || shift.title, b.description, b.date || shift.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(linienOut), autoOut, bvonOut, bbisOut, id]);
+  const capOut = req.body.reserve_cap !== undefined ? b.reserve_cap : shift.reserve_cap;
+  await db.run(`UPDATE shifts SET title = ?, description = ?, date = ?, time_start = ?, time_end = ?, host_id = ?, status = ?, linien = ?, auto_dienste = ?, reserve_cap = ?, betrieb_von = ?, betrieb_bis = ? WHERE id = ?`,
+    [b.title || shift.title, b.description, b.date || shift.date, b.time_start, b.time_end, b.host_id, b.status, JSON.stringify(linienOut), autoOut, capOut, bvonOut, bbisOut, id]);
   res.json({ ok: true });
 });
 
@@ -1345,8 +1492,8 @@ app.post('/api/admin/shifts/:id/duplicate', requireAuth, requireAdmin, async (re
   const id = parseInt(req.params.id, 10);
   const shift = await db.get(`SELECT * FROM shifts WHERE id = ?`, [id]);
   if (!shift) return res.status(400).json({ error: 'Shift nicht gefunden.' });
-  const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, created_by) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?)`,
-    [shift.title + ' (Kopie)', shift.description, shift.date, shift.time_start, shift.time_end, shift.host_id, req.user.id]);
+  const res2 = await db.run(`INSERT INTO shifts (title, description, date, time_start, time_end, host_id, status, reserve_cap, created_by) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+    [shift.title + ' (Kopie)', shift.description, shift.date, shift.time_start, shift.time_end, shift.host_id, shift.reserve_cap, req.user.id]);
   const newId = res2.lastRowId;
   const duties = await db.all(`SELECT * FROM dutys WHERE shift_id = ?`, [id]);
   for (const d of duties) {
@@ -1567,6 +1714,32 @@ app.put('/api/admin/news/:id', requireAuth, requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/news/:id', requireAuth, requireAdmin, async (req, res) => {
   await db.run(`DELETE FROM news WHERE id = ?`, [parseInt(req.params.id, 10)]);
+  res.json({ ok: true });
+});
+
+/* --------------------------------- Benachrichtigungen --------------------------------- */
+
+async function notify(userId, type, title, body) {
+  try {
+    const u = await db.get(`SELECT notifications FROM users WHERE id = ?`, [userId]);
+    if (!u || !u.notifications) return;
+    await db.run(`INSERT INTO notifications (user_id, type, title, body) VALUES (?, ?, ?, ?)`, [userId, type, title, body]);
+  } catch (e) { /* Benachrichtigungen dÃ¼rfen nie den Request brechen. */ }
+}
+
+app.get('/api/notifications', requireAuth, async (req, res) => {
+  const rows = await db.all(`SELECT id, type, title, body, created_at, seen FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 50`, [req.user.id]);
+  const count = await db.get(`SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND seen = 0`, [req.user.id]);
+  res.json({ notifications: rows, unseen: count.n || 0 });
+});
+
+app.post('/api/notifications/read', requireAuth, async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map((x) => parseInt(x, 10)).filter((x) => Number.isInteger(x) && x > 0) : [];
+  if (ids.length) {
+    await db.run(`UPDATE notifications SET seen = 1 WHERE user_id = ? AND id IN (${ids.map(() => '?').join(',')})`, [req.user.id, ...ids]);
+  } else {
+    await db.run(`UPDATE notifications SET seen = 1 WHERE user_id = ? AND seen = 0`, [req.user.id]);
+  }
   res.json({ ok: true });
 });
 

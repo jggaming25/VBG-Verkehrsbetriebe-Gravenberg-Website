@@ -12,85 +12,261 @@
       "betrieb_bis_we": 22,
       "haltestellen": {
         "hin": [
-          { "name": "Stümp Voiskamp", "an": null, "ab": 0 },
-          { "name": "Stümp Ortsende", "an": 1, "ab": 1 },
-          { "name": "Neuenburg Schule", "an": 2, "ab": 2 },
-          { "name": "Neuenburg Stadt", "an": 3, "ab": 3 },
-          { "name": "Neuenburg West", "an": 4, "ab": 4 },
-          { "name": "Nb Betriebshof VBG", "an": 5, "ab": 5 },
-          { "name": "Nb Media Schwarz", "an": 6, "ab": 6 },
-          { "name": "Neuenburg Neue Siedlung", "an": 7, "ab": 7 },
-          { "name": "Neuenburg Sütelkamp", "an": 8, "ab": 8 },
-          { "name": "Sütel Wendeplatz", "an": 9, "ab": 9 },
-          { "name": "Löbstein", "an": 10, "ab": 10 },
-          { "name": "Kreiskrankenhaus", "an": 11, "ab": 11 },
-          { "name": "Altstadt Süd", "an": 12, "ab": 12 },
-          { "name": "Altstadt Markt", "an": 13, "ab": 13 },
-          { "name": "Neurrupiner Straße", "an": 14, "ab": 14 },
-          { "name": "Gravenberg ZOB", "an": 15, "ab": null }
+          {
+            "name": "Stümp Voiskamp",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Stümp Ortsende",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Neuenburg Schule",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Neuenburg Stadt",
+            "an": 3,
+            "ab": 3
+          },
+          {
+            "name": "Neuenburg West",
+            "an": 4,
+            "ab": 4
+          },
+          {
+            "name": "Nb Betriebshof VBG",
+            "an": 5,
+            "ab": 5
+          },
+          {
+            "name": "Nb Media Schwarz",
+            "an": 6,
+            "ab": 6
+          },
+          {
+            "name": "Neuenburg Neue Siedlung",
+            "an": 7,
+            "ab": 7
+          },
+          {
+            "name": "Neuenburg Sütelkamp",
+            "an": 8,
+            "ab": 8
+          },
+          {
+            "name": "Sütel Wendeplatz",
+            "an": 9,
+            "ab": 9
+          },
+          {
+            "name": "Löbstein",
+            "an": 10,
+            "ab": 10
+          },
+          {
+            "name": "Kreiskrankenhaus",
+            "an": 11,
+            "ab": 11
+          },
+          {
+            "name": "Altstadt Süd",
+            "an": 12,
+            "ab": 12
+          },
+          {
+            "name": "Altstadt Markt",
+            "an": 13,
+            "ab": 13
+          },
+          {
+            "name": "Neurrupiner Straße",
+            "an": 14,
+            "ab": 14
+          },
+          {
+            "name": "Gravenberg ZOB",
+            "an": 15,
+            "ab": null
+          }
         ],
         "zurück": [
-          { "name": "Gravenberg ZOB", "an": null, "ab": 0 },
-          { "name": "Neurrupiner Straße", "an": 1, "ab": 1 },
-          { "name": "Altstadt Markt", "an": 2, "ab": 2 },
-          { "name": "Altstadt Süd", "an": 3, "ab": 3 },
-          { "name": "Kreiskrankenhaus", "an": 4, "ab": 4 },
-          { "name": "Löbstein", "an": 5, "ab": 5 },
-          { "name": "Sütel Wendeplatz", "an": 6, "ab": 6 },
-          { "name": "Neuenburg Sütelkamp", "an": 7, "ab": 7 },
-          { "name": "Neuenburg Neue Siedlung", "an": 8, "ab": 8 },
-          { "name": "Nb Media Schwarz", "an": 9, "ab": 9 },
-          { "name": "Nb Betriebshof VBG", "an": 10, "ab": 10 },
-          { "name": "Neuenburg West", "an": 11, "ab": 11 },
-          { "name": "Neuenburg Stadt", "an": 12, "ab": 12 },
-          { "name": "Neuenburg Schule", "an": 13, "ab": 13 },
-          { "name": "Stümp Ortsende", "an": 14, "ab": 14 },
-          { "name": "Stümp Voiskamp", "an": 15, "ab": null }
+          {
+            "name": "Gravenberg ZOB",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Neurrupiner Straße",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Altstadt Markt",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Altstadt Süd",
+            "an": 3,
+            "ab": 3
+          },
+          {
+            "name": "Kreiskrankenhaus",
+            "an": 4,
+            "ab": 4
+          },
+          {
+            "name": "Löbstein",
+            "an": 5,
+            "ab": 5
+          },
+          {
+            "name": "Sütel Wendeplatz",
+            "an": 6,
+            "ab": 6
+          },
+          {
+            "name": "Neuenburg Sütelkamp",
+            "an": 7,
+            "ab": 7
+          },
+          {
+            "name": "Neuenburg Neue Siedlung",
+            "an": 8,
+            "ab": 8
+          },
+          {
+            "name": "Nb Media Schwarz",
+            "an": 9,
+            "ab": 9
+          },
+          {
+            "name": "Nb Betriebshof VBG",
+            "an": 10,
+            "ab": 10
+          },
+          {
+            "name": "Neuenburg West",
+            "an": 11,
+            "ab": 11
+          },
+          {
+            "name": "Neuenburg Stadt",
+            "an": 12,
+            "ab": 12
+          },
+          {
+            "name": "Neuenburg Schule",
+            "an": 13,
+            "ab": 13
+          },
+          {
+            "name": "Stümp Ortsende",
+            "an": 14,
+            "ab": 14
+          },
+          {
+            "name": "Stümp Voiskamp",
+            "an": 15,
+            "ab": null
+          }
         ]
       },
       "kurse": [
         {
           "kurs": 1,
-          "fahrzeug": "gelenk",
+          "fahrzeug": "Solo",
           "ausruecken": "XX:50 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Stümp Voiskamp",
           "faehrt": [
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 0, "dauer": 16 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 30, "dauer": 16 }
+            {
+              "richtung": "hin",
+              "von": "Stümp Voiskamp",
+              "nach": "Gravenberg ZOB",
+              "offset": 0,
+              "dauer": 15
+            },
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Stümp Voiskamp",
+              "offset": 30,
+              "dauer": 15
+            }
           ]
         },
         {
           "kurs": 2,
-          "fahrzeug": "gelenk/solo",
+          "fahrzeug": "Solo",
           "ausruecken": "XX:50 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 0, "dauer": 16 },
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 30, "dauer": 16 }
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Stümp Voiskamp",
+              "offset": 0,
+              "dauer": 15
+            },
+            {
+              "richtung": "hin",
+              "von": "Stümp Voiskamp",
+              "nach": "Gravenberg ZOB",
+              "offset": 30,
+              "dauer": 15
+            }
           ]
         },
         {
           "kurs": 3,
-          "fahrzeug": "solo",
-          "ausruecken": "XX:00 / BTHF",
+          "fahrzeug": "Solo",
+          "ausruecken": "XX:20 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Stümp Voiskamp",
           "faehrt": [
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 10, "dauer": 16 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 40, "dauer": 16 }
+            {
+              "richtung": "hin",
+              "von": "Stümp Voiskamp",
+              "nach": "Gravenberg ZOB",
+              "offset": 15,
+              "dauer": 15
+            },
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Stümp Voiskamp",
+              "offset": 45,
+              "dauer": 15
+            }
           ]
         },
         {
           "kurs": 4,
-          "fahrzeug": "solo",
-          "ausruecken": "XX:00 / BTHF",
+          "fahrzeug": "Solo",
+          "ausruecken": "XX:20 / BTHF",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 10, "dauer": 16 },
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 40, "dauer": 16 }
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Stümp Voiskamp",
+              "offset": 15,
+              "dauer": 15
+            },
+            {
+              "richtung": "hin",
+              "von": "Stümp Voiskamp",
+              "nach": "Gravenberg ZOB",
+              "offset": 45,
+              "dauer": 15
+            }
           ]
         },
         {
@@ -100,8 +276,20 @@
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Stümp Voiskamp",
           "faehrt": [
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 20, "dauer": 16 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 50, "dauer": 16 }
+            {
+              "richtung": "hin",
+              "von": "Stümp Voiskamp",
+              "nach": "Gravenberg ZOB",
+              "offset": 20,
+              "dauer": 16
+            },
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Stümp Voiskamp",
+              "offset": 50,
+              "dauer": 16
+            }
           ]
         },
         {
@@ -111,8 +299,20 @@
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Stümp Voiskamp", "offset": 20, "dauer": 16 },
-            { "richtung": "hin", "von": "Stümp Voiskamp", "nach": "Gravenberg ZOB", "offset": 50, "dauer": 16 }
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Stümp Voiskamp",
+              "offset": 20,
+              "dauer": 16
+            },
+            {
+              "richtung": "hin",
+              "von": "Stümp Voiskamp",
+              "nach": "Gravenberg ZOB",
+              "offset": 50,
+              "dauer": 16
+            }
           ]
         }
       ]
@@ -129,57 +329,193 @@
       "betrieb_bis_we": 23,
       "haltestellen": {
         "hin": [
-          { "name": "Sorenkoppel", "an": null, "ab": 0 },
-          { "name": "Sorenkoppel Ost", "an": 1, "ab": 1 },
-          { "name": "Neuenburg Schule", "an": 2, "ab": 2 },
-          { "name": "Neuenburg Stadt", "an": 3, "ab": 3 },
-          { "name": "Neuenburg West", "an": 4, "ab": 4 },
-          { "name": "Nb Betriebshof VBG", "an": 5, "ab": 5 },
-          { "name": "Nb Media Schwarz", "an": 6, "ab": 6 },
-          { "name": "Abzweig Sütel", "an": 7, "ab": 7 },
-          { "name": "Abzweig Kreiskrankenhaus", "an": 8, "ab": 8 },
-          { "name": "Altstadt Markt", "an": 9, "ab": 9 },
-          { "name": "Gravenberg ZOB", "an": 10, "ab": null }
+          {
+            "name": "Sorenkoppel",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Sorenkoppel Ost",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Neuenburg Schule",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Neuenburg Stadt",
+            "an": 3,
+            "ab": 3
+          },
+          {
+            "name": "Neuenburg West",
+            "an": 4,
+            "ab": 4
+          },
+          {
+            "name": "Nb Betriebshof VBG",
+            "an": 5,
+            "ab": 5
+          },
+          {
+            "name": "Nb Media Schwarz",
+            "an": 6,
+            "ab": 6
+          },
+          {
+            "name": "Abzweig Sütel",
+            "an": 7,
+            "ab": 7
+          },
+          {
+            "name": "Abzweig Kreiskrankenhaus",
+            "an": 8,
+            "ab": 8
+          },
+          {
+            "name": "Altstadt Markt",
+            "an": 9,
+            "ab": 9
+          },
+          {
+            "name": "Gravenberg ZOB",
+            "an": 10,
+            "ab": null
+          }
         ],
         "zurück": [
-          { "name": "Gravenberg ZOB", "an": null, "ab": 0 },
-          { "name": "Altstadt Markt", "an": 1, "ab": 1 },
-          { "name": "Abzweig Kreiskrankenhaus", "an": 2, "ab": 2 },
-          { "name": "Abzweig Sütel", "an": 3, "ab": 3 },
-          { "name": "Nb Media Schwarz", "an": 4, "ab": 4 },
-          { "name": "Nb Betriebshof VBG", "an": 5, "ab": 5 },
-          { "name": "Neuenburg West", "an": 6, "ab": 6 },
-          { "name": "Neuenburg Stadt", "an": 7, "ab": 7 },
-          { "name": "Neuenburg Schule", "an": 8, "ab": 8 },
-          { "name": "Sorenkoppel West", "an": 9, "ab": 9 },
-          { "name": "Sorenkoppel", "an": 10, "ab": null }
+          {
+            "name": "Gravenberg ZOB",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Altstadt Markt",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Abzweig Kreiskrankenhaus",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Abzweig Sütel",
+            "an": 3,
+            "ab": 3
+          },
+          {
+            "name": "Nb Media Schwarz",
+            "an": 4,
+            "ab": 4
+          },
+          {
+            "name": "Nb Betriebshof VBG",
+            "an": 5,
+            "ab": 5
+          },
+          {
+            "name": "Neuenburg West",
+            "an": 6,
+            "ab": 6
+          },
+          {
+            "name": "Neuenburg Stadt",
+            "an": 7,
+            "ab": 7
+          },
+          {
+            "name": "Neuenburg Schule",
+            "an": 8,
+            "ab": 8
+          },
+          {
+            "name": "Sorenkoppel West",
+            "an": 9,
+            "ab": 9
+          },
+          {
+            "name": "Sorenkoppel",
+            "an": 10,
+            "ab": null
+          }
         ]
       },
       "kurse": [
         {
           "kurs": 1,
-          "fahrzeug": "gelenk",
-          "ausruecken": "XX:50 / BTHF",
+          "fahrzeug": "Gelenk",
+          "ausruecken": "XX:50",
           "leerfahrt_von": "VBG Betriebshof",
-          "leerfahrt_nach": "Neuenburg Schule",
+          "leerfahrt_nach": "Sorenkoppel",
           "faehrt": [
-            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 0, "dauer": 8 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 20, "dauer": 8 },
-            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 40, "dauer": 8 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 48, "dauer": 8 }
+            {
+              "richtung": "hin",
+              "von": "Sorenkoppel",
+              "nach": "Gravenberg ZOB",
+              "offset": 0,
+              "dauer": 10
+            },
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Sorenkoppel",
+              "offset": 15,
+              "dauer": 10
+            },
+            {
+              "richtung": "hin",
+              "von": "Sorenkoppel",
+              "nach": "Gravenberg ZOB",
+              "offset": 30,
+              "dauer": 10
+            },
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Sorenkoppel",
+              "offset": 45,
+              "dauer": 10
+            }
           ]
         },
         {
           "kurs": 2,
-          "fahrzeug": "gelenk",
-          "ausruecken": "XX:50 / BTHF",
+          "fahrzeug": "Gelenk/Solo",
+          "ausruecken": "XX:50",
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 0, "dauer": 8 },
-            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 20, "dauer": 8 },
-            { "richtung": "zurück", "von": "Gravenberg ZOB", "nach": "Neuenburg Schule", "offset": 40, "dauer": 8 },
-            { "richtung": "hin", "von": "Neuenburg Schule", "nach": "Gravenberg ZOB", "offset": 48, "dauer": 8 }
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Sorenkoppel",
+              "offset": 0,
+              "dauer": 10
+            },
+            {
+              "richtung": "hin",
+              "von": "Sorenkoppel",
+              "nach": "Gravenberg ZOB",
+              "offset": 15,
+              "dauer": 10
+            },
+            {
+              "richtung": "zurück",
+              "von": "Gravenberg ZOB",
+              "nach": "Sorenkoppel",
+              "offset": 30,
+              "dauer": 10
+            },
+            {
+              "richtung": "hin",
+              "von": "Sorenkoppel",
+              "nach": "Gravenberg ZOB",
+              "offset": 45,
+              "dauer": 10
+            }
           ]
         }
       ]
@@ -196,20 +532,68 @@
       "betrieb_bis_we": 21,
       "haltestellen": {
         "hin": [
-          { "name": "Gravenberg ZOB", "an": null, "ab": 0 },
-          { "name": "Kasseler Straße", "an": 1, "ab": 1 },
-          { "name": "Kreisverkehr", "an": 1, "ab": 1 },
-          { "name": "Stadtpark", "an": 2, "ab": 2 },
-          { "name": "Ortsende", "an": 2, "ab": 2 },
-          { "name": "Bergdorf", "an": 3, "ab": null }
+          {
+            "name": "Gravenberg ZOB",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Kasseler Straße",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Kreisverkehr",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Stadtpark",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Ortsende",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Bergdorf",
+            "an": 3,
+            "ab": null
+          }
         ],
         "zurück": [
-          { "name": "Bergdorf", "an": null, "ab": 0 },
-          { "name": "Ortsende", "an": 1, "ab": 1 },
-          { "name": "Stadtpark", "an": 1, "ab": 1 },
-          { "name": "Kreisverkehr", "an": 2, "ab": 2 },
-          { "name": "Kasseler Straße", "an": 2, "ab": 2 },
-          { "name": "Gravenberg ZOB", "an": 3, "ab": null }
+          {
+            "name": "Bergdorf",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Ortsende",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Stadtpark",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Kreisverkehr",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Kasseler Straße",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Gravenberg ZOB",
+            "an": 3,
+            "ab": null
+          }
         ]
       },
       "kurse": [
@@ -220,14 +604,62 @@
           "leerfahrt_von": "VBG Betriebshof",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "hin", "von": "Gravenberg ZOB", "nach": "Bergdorf", "offset": 0, "dauer": 3 },
-            { "richtung": "zurück", "von": "Bergdorf", "nach": "Gravenberg ZOB", "offset": 5, "dauer": 3 },
-            { "richtung": "hin", "von": "Gravenberg ZOB", "nach": "Bergdorf", "offset": 15, "dauer": 3 },
-            { "richtung": "zurück", "von": "Bergdorf", "nach": "Gravenberg ZOB", "offset": 20, "dauer": 3 },
-            { "richtung": "hin", "von": "Gravenberg ZOB", "nach": "Bergdorf", "offset": 30, "dauer": 3 },
-            { "richtung": "zurück", "von": "Bergdorf", "nach": "Gravenberg ZOB", "offset": 35, "dauer": 3 },
-            { "richtung": "hin", "von": "Gravenberg ZOB", "nach": "Bergdorf", "offset": 45, "dauer": 3 },
-            { "richtung": "zurück", "von": "Bergdorf", "nach": "Gravenberg ZOB", "offset": 50, "dauer": 3 }
+            {
+              "richtung": "hin",
+              "von": "Gravenberg ZOB",
+              "nach": "Bergdorf",
+              "offset": 0,
+              "dauer": 3
+            },
+            {
+              "richtung": "zurück",
+              "von": "Bergdorf",
+              "nach": "Gravenberg ZOB",
+              "offset": 5,
+              "dauer": 3
+            },
+            {
+              "richtung": "hin",
+              "von": "Gravenberg ZOB",
+              "nach": "Bergdorf",
+              "offset": 15,
+              "dauer": 3
+            },
+            {
+              "richtung": "zurück",
+              "von": "Bergdorf",
+              "nach": "Gravenberg ZOB",
+              "offset": 20,
+              "dauer": 3
+            },
+            {
+              "richtung": "hin",
+              "von": "Gravenberg ZOB",
+              "nach": "Bergdorf",
+              "offset": 30,
+              "dauer": 3
+            },
+            {
+              "richtung": "zurück",
+              "von": "Bergdorf",
+              "nach": "Gravenberg ZOB",
+              "offset": 35,
+              "dauer": 3
+            },
+            {
+              "richtung": "hin",
+              "von": "Gravenberg ZOB",
+              "nach": "Bergdorf",
+              "offset": 45,
+              "dauer": 3
+            },
+            {
+              "richtung": "zurück",
+              "von": "Bergdorf",
+              "nach": "Gravenberg ZOB",
+              "offset": 50,
+              "dauer": 3
+            }
           ]
         }
       ]
@@ -244,106 +676,522 @@
       "betrieb_bis_we": 4,
       "haltestellen": {
         "hin": [
-          { "name": "Gravenberg ZOB", "an": null, "ab": 0 },
-          { "name": "Altstadt Markt", "an": 1, "ab": 2 },
-          { "name": "Altstadt Süd", "an": 3, "ab": 4 },
-          { "name": "Kreiskrankenhaus", "an": 5, "ab": 5 },
-          { "name": "Löbstein", "an": 6, "ab": 6 },
-          { "name": "Abzweig Sütel", "an": 7, "ab": 8 },
-          { "name": "Neuenburg Neue Siedlung", "an": 10, "ab": 10 },
-          { "name": "Neuenburg Sütelkamp", "an": 11, "ab": 11 },
-          { "name": "Sütel Wendeplatz", "an": 12, "ab": 12 },
-          { "name": "Nb Media Schwarz", "an": 13, "ab": 13 },
-          { "name": "Nb Betriebshof VBG", "an": 14, "ab": 14 },
-          { "name": "Neuenburg West", "an": 15, "ab": 15 },
-          { "name": "Neuenburg Stadt", "an": 16, "ab": 17 },
-          { "name": "Sorenkoppel West", "an": 18, "ab": 19 },
-          { "name": "Neuenburg Sorenkoppel", "an": 20, "ab": null }
+          {
+            "name": "Gravenberg ZOB",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Altstadt Markt",
+            "an": 1,
+            "ab": 2
+          },
+          {
+            "name": "Altstadt Süd",
+            "an": 3,
+            "ab": 4
+          },
+          {
+            "name": "Kreiskrankenhaus",
+            "an": 5,
+            "ab": 5
+          },
+          {
+            "name": "Löbstein",
+            "an": 6,
+            "ab": 6
+          },
+          {
+            "name": "Abzweig Sütel",
+            "an": 7,
+            "ab": 8
+          },
+          {
+            "name": "Neuenburg Neue Siedlung",
+            "an": 10,
+            "ab": 10
+          },
+          {
+            "name": "Neuenburg Sütelkamp",
+            "an": 11,
+            "ab": 11
+          },
+          {
+            "name": "Sütel Wendeplatz",
+            "an": 12,
+            "ab": 12
+          },
+          {
+            "name": "Nb Media Schwarz",
+            "an": 13,
+            "ab": 13
+          },
+          {
+            "name": "Nb Betriebshof VBG",
+            "an": 14,
+            "ab": 14
+          },
+          {
+            "name": "Neuenburg West",
+            "an": 15,
+            "ab": 15
+          },
+          {
+            "name": "Neuenburg Stadt",
+            "an": 16,
+            "ab": 17
+          },
+          {
+            "name": "Sorenkoppel West",
+            "an": 18,
+            "ab": 19
+          },
+          {
+            "name": "Neuenburg Sorenkoppel",
+            "an": 20,
+            "ab": null
+          }
         ],
         "zurück": [
-          { "name": "Neuenburg Sorenkoppel", "an": null, "ab": 0 },
-          { "name": "Sorenkoppel Ost", "an": 1, "ab": 1 },
-          { "name": "Neuenburg Stadt", "an": 2, "ab": 2 },
-          { "name": "Neuenburg West", "an": 3, "ab": 3 },
-          { "name": "Nb Betriebshof VBG", "an": 4, "ab": 4 },
-          { "name": "Nb Media Schwarz", "an": 5, "ab": 5 },
-          { "name": "Neuenburg Neue Siedlung", "an": 6, "ab": 6 },
-          { "name": "Neuenburg Sütelkamp", "an": 7, "ab": 7 },
-          { "name": "Sütel Wendeplatz", "an": 8, "ab": 8 },
-          { "name": "Abzweig Sütel", "an": 9, "ab": 9 },
-          { "name": "Abzweig Kreiskrankenhaus", "an": 10, "ab": 10 },
-          { "name": "Altstadt Süd", "an": 11, "ab": 11 },
-          { "name": "Altstadt Markt", "an": 12, "ab": 12 },
-          { "name": "Neurrupiner Straße", "an": 13, "ab": 13 },
-          { "name": "Gravenberg ZOB", "an": 14, "ab": null }
+          {
+            "name": "Neuenburg Sorenkoppel",
+            "an": null,
+            "ab": 0
+          },
+          {
+            "name": "Sorenkoppel Ost",
+            "an": 1,
+            "ab": 1
+          },
+          {
+            "name": "Neuenburg Stadt",
+            "an": 2,
+            "ab": 2
+          },
+          {
+            "name": "Neuenburg West",
+            "an": 3,
+            "ab": 3
+          },
+          {
+            "name": "Nb Betriebshof VBG",
+            "an": 4,
+            "ab": 4
+          },
+          {
+            "name": "Nb Media Schwarz",
+            "an": 5,
+            "ab": 5
+          },
+          {
+            "name": "Neuenburg Neue Siedlung",
+            "an": 6,
+            "ab": 6
+          },
+          {
+            "name": "Neuenburg Sütelkamp",
+            "an": 7,
+            "ab": 7
+          },
+          {
+            "name": "Sütel Wendeplatz",
+            "an": 8,
+            "ab": 8
+          },
+          {
+            "name": "Abzweig Sütel",
+            "an": 9,
+            "ab": 9
+          },
+          {
+            "name": "Abzweig Kreiskrankenhaus",
+            "an": 10,
+            "ab": 10
+          },
+          {
+            "name": "Altstadt Süd",
+            "an": 11,
+            "ab": 11
+          },
+          {
+            "name": "Altstadt Markt",
+            "an": 12,
+            "ab": 12
+          },
+          {
+            "name": "Neurrupiner Straße",
+            "an": 13,
+            "ab": 13
+          },
+          {
+            "name": "Gravenberg ZOB",
+            "an": 14,
+            "ab": null
+          }
         ]
       },
       "kurse": [
         {
           "kurs": 1,
-          "fahrzeug": "gelenk",
-          "ausruecken": "XX:10 ab GVZ",
+          "fahrzeug": "Gelenk",
+          "ausruecken": "XX:10",
           "leerfahrt_von": "VBG Gravenberg BTH",
           "leerfahrt_nach": "Gravenberg ZOB",
           "faehrt": [
-            { "richtung": "hin", "von": "Gravenberg ZOB", "nach": "Neuenburg Sorenkoppel", "offset": 20, "dauer": 20 },
-            { "richtung": "zurück", "von": "Neuenburg Sorenkoppel", "nach": "Gravenberg ZOB", "offset": 1, "dauer": 15 }
+            {
+              "richtung": "hin",
+              "von": "Gravenberg ZOB",
+              "nach": "Neuenburg Sorenkoppel",
+              "offset": 20,
+              "dauer": 20
+            },
+            {
+              "richtung": "zurück",
+              "von": "Neuenburg Sorenkoppel",
+              "nach": "Gravenberg ZOB",
+              "offset": 1,
+              "dauer": 14
+            }
           ]
         }
       ]
     }
   ],
   "fahrzeuge": [
-    { "wagennummer": "2088", "kennzeichen": "-", "typ": "solo", "modell": "MB Integro O560", "bestand_seit": "01.09.2026", "bestand_bis": "", "status": "sonderfahrzeug", "bemerkung": "Derzeit nicht Einsatz bereit" },
-    { "wagennummer": "1101", "kennzeichen": "GV-VB 1101", "typ": "solo", "modell": "MAN A37", "bestand_seit": "04.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1102", "kennzeichen": "GV-VB 1102", "typ": "solo", "modell": "MAN A37", "bestand_seit": "01.09.2027", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1103", "kennzeichen": "GV-VB 1103", "typ": "solo", "modell": "Mercedes Benz O530 Facelift", "bestand_seit": "13.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1104", "kennzeichen": "GV-VB 1104", "typ": "solo", "modell": "Mercedes Benz O530 Facelift", "bestand_seit": "13.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1401", "kennzeichen": "GV-VB 1401", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "04.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1402", "kennzeichen": "GV-VB 1402", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "04.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1403", "kennzeichen": "GV-VB 1403", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "01.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2201", "kennzeichen": "GV-VB 2201", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "04.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2202", "kennzeichen": "GV-VB 2202", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "01.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2501", "kennzeichen": "GV-VB 2501", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "04.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2502", "kennzeichen": "GV-VB 2502", "typ": "solo", "modell": "Mercedes Benz C2 Solo", "bestand_seit": "04.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2005", "kennzeichen": "GV-VB 2005", "typ": "gelenk", "modell": "MAN NG 313", "bestand_seit": "01.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2006", "kennzeichen": "GV-VB 2006", "typ": "gelenk", "modell": "MAN NG 313", "bestand_seit": "01.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1201", "kennzeichen": "GV-VB 1201", "typ": "gelenk", "modell": "MAN A23", "bestand_seit": "01.09.2026", "bestand_bis": "04.09.2026", "status": "nicht_einsatzbereit", "bemerkung": "Nicht Einsatz Bereit" },
-    { "wagennummer": "1460", "kennzeichen": "GV-VB 1460", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "09.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1461", "kennzeichen": "GV-VB 1461", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "09.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1462", "kennzeichen": "GV-VB 1462", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "09.09.2026", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2560", "kennzeichen": "GV-VB 2560", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2561", "kennzeichen": "GV-VB 2561", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2605", "kennzeichen": "GV-VB 2605", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "2606", "kennzeichen": "GV-VB 2606", "typ": "gelenk", "modell": "Mercedes Benz C2 G", "bestand_seit": "", "bestand_bis": "", "status": "einsatzbereit", "bemerkung": "" },
-    { "wagennummer": "1404", "kennzeichen": "GV-VB 1404", "typ": "fahrschule", "modell": "1404", "bestand_seit": "08.09.2026", "bestand_bis": "", "status": "fahrschule", "bemerkung": "Fahrschule" }
+    {
+      "wagennummer": "2088",
+      "kennzeichen": "-",
+      "typ": "solo",
+      "modell": "MB Integro O560",
+      "bestand_seit": "01.09.2026",
+      "bestand_bis": "",
+      "status": "sonderfahrzeug",
+      "bemerkung": "Derzeit nicht Einsatz bereit"
+    },
+    {
+      "wagennummer": "1101",
+      "kennzeichen": "GV-VB 1101",
+      "typ": "solo",
+      "modell": "MAN A37",
+      "bestand_seit": "04.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1102",
+      "kennzeichen": "GV-VB 1102",
+      "typ": "solo",
+      "modell": "MAN A37",
+      "bestand_seit": "01.09.2027",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1103",
+      "kennzeichen": "GV-VB 1103",
+      "typ": "solo",
+      "modell": "Mercedes Benz O530 Facelift",
+      "bestand_seit": "13.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1104",
+      "kennzeichen": "GV-VB 1104",
+      "typ": "solo",
+      "modell": "Mercedes Benz O530 Facelift",
+      "bestand_seit": "13.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1401",
+      "kennzeichen": "GV-VB 1401",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "04.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1402",
+      "kennzeichen": "GV-VB 1402",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "04.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1403",
+      "kennzeichen": "GV-VB 1403",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "01.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2201",
+      "kennzeichen": "GV-VB 2201",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "04.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2202",
+      "kennzeichen": "GV-VB 2202",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "01.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2501",
+      "kennzeichen": "GV-VB 2501",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "04.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2502",
+      "kennzeichen": "GV-VB 2502",
+      "typ": "solo",
+      "modell": "Mercedes Benz C2 Solo",
+      "bestand_seit": "04.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2005",
+      "kennzeichen": "GV-VB 2005",
+      "typ": "gelenk",
+      "modell": "MAN NG 313",
+      "bestand_seit": "01.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2006",
+      "kennzeichen": "GV-VB 2006",
+      "typ": "gelenk",
+      "modell": "MAN NG 313",
+      "bestand_seit": "01.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1201",
+      "kennzeichen": "GV-VB 1201",
+      "typ": "gelenk",
+      "modell": "MAN A23",
+      "bestand_seit": "01.09.2026",
+      "bestand_bis": "04.09.2026",
+      "status": "nicht_einsatzbereit",
+      "bemerkung": "Nicht Einsatz Bereit"
+    },
+    {
+      "wagennummer": "1460",
+      "kennzeichen": "GV-VB 1460",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "09.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1461",
+      "kennzeichen": "GV-VB 1461",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "09.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1462",
+      "kennzeichen": "GV-VB 1462",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "09.09.2026",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2560",
+      "kennzeichen": "GV-VB 2560",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2561",
+      "kennzeichen": "GV-VB 2561",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2605",
+      "kennzeichen": "GV-VB 2605",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "2606",
+      "kennzeichen": "GV-VB 2606",
+      "typ": "gelenk",
+      "modell": "Mercedes Benz C2 G",
+      "bestand_seit": "",
+      "bestand_bis": "",
+      "status": "einsatzbereit",
+      "bemerkung": ""
+    },
+    {
+      "wagennummer": "1404",
+      "kennzeichen": "GV-VB 1404",
+      "typ": "fahrschule",
+      "modell": "1404",
+      "bestand_seit": "08.09.2026",
+      "bestand_bis": "",
+      "status": "fahrschule",
+      "bemerkung": "Fahrschule"
+    }
   ],
   "feiertage": [
-    { "datum": "2026-01-01", "name": "Neujahr" },
-    { "datum": "2026-01-06", "name": "Heilige Drei Könige" },
-    { "datum": "2026-04-03", "name": "Karfreitag" },
-    { "datum": "2026-04-06", "name": "Ostermontag" },
-    { "datum": "2026-05-01", "name": "Tag der Arbeit" },
-    { "datum": "2026-05-14", "name": "Christi Himmelfahrt" },
-    { "datum": "2026-05-25", "name": "Pfingstmontag" },
-    { "datum": "2026-10-03", "name": "Tag der Deutschen Einheit" },
-    { "datum": "2026-10-31", "name": "Reformationstag" },
-    { "datum": "2026-12-25", "name": "1. Weihnachtstag" },
-    { "datum": "2026-12-26", "name": "2. Weihnachtstag" }
+    {
+      "datum": "2026-01-01",
+      "name": "Neujahr"
+    },
+    {
+      "datum": "2026-01-06",
+      "name": "Heilige Drei Könige"
+    },
+    {
+      "datum": "2026-04-03",
+      "name": "Karfreitag"
+    },
+    {
+      "datum": "2026-04-06",
+      "name": "Ostermontag"
+    },
+    {
+      "datum": "2026-05-01",
+      "name": "Tag der Arbeit"
+    },
+    {
+      "datum": "2026-05-14",
+      "name": "Christi Himmelfahrt"
+    },
+    {
+      "datum": "2026-05-25",
+      "name": "Pfingstmontag"
+    },
+    {
+      "datum": "2026-10-03",
+      "name": "Tag der Deutschen Einheit"
+    },
+    {
+      "datum": "2026-10-31",
+      "name": "Reformationstag"
+    },
+    {
+      "datum": "2026-12-25",
+      "name": "1. Weihnachtstag"
+    },
+    {
+      "datum": "2026-12-26",
+      "name": "2. Weihnachtstag"
+    }
   ],
   "ferien_sh": [
-    { "von": "2026-03-26", "bis": "2026-04-10", "name": "Osterferien SH" },
-    { "von": "2026-05-15", "bis": "2026-05-15", "name": "Himmelfahrtsferien SH" },
-    { "von": "2026-07-04", "bis": "2026-08-15", "name": "Sommerferien SH" },
-    { "von": "2026-10-12", "bis": "2026-10-24", "name": "Herbstferien SH" },
-    { "von": "2026-12-21", "bis": "2027-01-06", "name": "Weihnachtsferien SH" }
+    {
+      "von": "2026-03-26",
+      "bis": "2026-04-10",
+      "name": "Osterferien SH"
+    },
+    {
+      "von": "2026-05-15",
+      "bis": "2026-05-15",
+      "name": "Himmelfahrtsferien SH"
+    },
+    {
+      "von": "2026-07-04",
+      "bis": "2026-08-15",
+      "name": "Sommerferien SH"
+    },
+    {
+      "von": "2026-10-12",
+      "bis": "2026-10-24",
+      "name": "Herbstferien SH"
+    },
+    {
+      "von": "2026-12-21",
+      "bis": "2027-01-06",
+      "name": "Weihnachtsferien SH"
+    }
   ],
   "ferien_st": [
-    { "von": "2026-01-31", "bis": "2026-02-06", "name": "Winterferien ST" },
-    { "von": "2026-03-30", "bis": "2026-04-04", "name": "Osterferien ST" },
-    { "von": "2026-05-26", "bis": "2026-05-29", "name": "Pfingstferien ST" },
-    { "von": "2026-07-04", "bis": "2026-08-14", "name": "Sommerferien ST" },
-    { "von": "2026-10-19", "bis": "2026-10-30", "name": "Herbstferien ST" },
-    { "von": "2026-12-21", "bis": "2027-01-02", "name": "Weihnachtsferien ST" }
+    {
+      "von": "2026-01-31",
+      "bis": "2026-02-06",
+      "name": "Winterferien ST"
+    },
+    {
+      "von": "2026-03-30",
+      "bis": "2026-04-04",
+      "name": "Osterferien ST"
+    },
+    {
+      "von": "2026-05-26",
+      "bis": "2026-05-29",
+      "name": "Pfingstferien ST"
+    },
+    {
+      "von": "2026-07-04",
+      "bis": "2026-08-14",
+      "name": "Sommerferien ST"
+    },
+    {
+      "von": "2026-10-19",
+      "bis": "2026-10-30",
+      "name": "Herbstferien ST"
+    },
+    {
+      "von": "2026-12-21",
+      "bis": "2027-01-02",
+      "name": "Weihnachtsferien ST"
+    }
   ]
 }

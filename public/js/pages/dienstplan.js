@@ -34,8 +34,17 @@ const DienstplanPage = {
   summary(d) {
     const list = d.fahrten || [];
     if (!list.length) return '';
-    const umlaeufe = [];
-    const seen = new Set();
+    let umlaeufe;
+    if (d.linien_unik && d.linien_unik.length) {
+      umlaeufe = d.linien_unik.map((l) => this.linieLabel(l));
+    } else {
+      const seen = new Set();
+      umlaeufe = [];
+      for (const f of list) {
+        const key = String(f.linie);
+        if (!seen.has(key)) { seen.add(key); umlaeufe.push(this.linieLabel(f.linie)); }
+      }
+    }
     let fzMin = 0;
     for (const f of list) {
       if (f.start && f.end) {
@@ -43,8 +52,6 @@ const DienstplanPage = {
         const b = new Date(String(f.end).length === 16 ? f.end + ':00' : f.end);
         if (!isNaN(a) && !isNaN(b) && b > a) fzMin += (b - a) / 60000;
       }
-      const key = String(f.linie);
-      if (!seen.has(key)) { seen.add(key); umlaeufe.push(this.linieLabel(f.linie)); }
     }
     return `${list.length} Fahrten · ${Math.round(fzMin)} min Fahrtzeit` + (umlaeufe.length ? ' · Umläufe: ' + umlaeufe.join(' ⟶ ') : '');
   },
@@ -59,7 +66,7 @@ const DienstplanPage = {
     const selected = haupt ? haupt.user_id : (reserve ? reserve.user_id : '');
 
     const label = d.type === 'bus'
-      ? '🚌 <b>' + esc(this.linieLabel(d.linie)) + '</b>'
+      ? '🚌 <b>' + esc(d.linien_unik && d.linien_unik.length ? d.linien_unik.map((l) => this.linieLabel(l)).join(' → ') : this.linieLabel(d.linie)) + '</b>'
       : d.type === 'wechsel'
         ? '🔄 Linienwechsel ' + esc(d.wechsel_from_name) + ' → ' + esc(d.wechsel_to_name)
         : '🛍️ ' + (d.standort || sig);

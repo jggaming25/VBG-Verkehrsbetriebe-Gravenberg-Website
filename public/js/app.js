@@ -16,6 +16,8 @@
     user: null,
     settings: { meldung_active: false, meldung_text: '' },
     checkAuth: null,
+    notifyTimer: null,
+    notifySeen: null,
 
     init() {
       this.bindShell();
@@ -42,10 +44,23 @@
       document.getElementById('sidebar-close').addEventListener('click', () => this.openSidebar(false));
       document.getElementById('sidebar-overlay').addEventListener('click', () => this.openSidebar(false));
 
+      document.getElementById('notify-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleNotifications();
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.notify-btn-wrap')) this.closeNotifications();
+      });
+
       document.getElementById('image-view-close').addEventListener('click', () => this.closeImage());
       document.getElementById('image-view').addEventListener('click', (e) => { if (e.target === e.currentTarget) this.closeImage(); });
 
       window.addEventListener('hashchange', () => this.route());
+      window.addEventListener('unhandledrejection', (e) => {
+        console.error('Unhandled rejection:', e.reason);
+        const m = (e.reason && e.reason.message) || 'Ein unerwarteter Fehler ist aufgetreten. Bitte neu laden.';
+        try { App.toast(m, 'error'); } catch (_) { /* Shell noch nicht bereit */ }
+      });
     },
 
     openSidebar(open) {
@@ -112,6 +127,7 @@
       this.buildNav();
       this.updateChips();
       this.route();
+      this.startNotifyPolling();
     },
 
     async doLogin() {
@@ -168,8 +184,83 @@
     async doLogout() {
       try { await API.post('/api/auth/logout'); } catch (e) { /* egal */ }
       document.cookie = 'vbg_sid=; Path=/; Max-Age=0';
+      this.stopNotifyPolling();
+      this.notifySeen = null;
+      this.closeNotifications();
+      this.renderNotifyBadge(0);
       this.user = null;
       this.showLogin();
+    },
+
+    startNotifyPolling() {
+      if (this.notifyTimer) clearInterval(this.notifyTimer);
+      this.pollNotifications();
+      this.notifyTimer = setInterval(() => this.pollNotifications(), 60000);
+    },
+
+    stopNotifyPolling() {
+      if (this.notifyTimer) { clearInterval(this.notifyTimer); this.notifyTimer = null; }
+    },
+
+    async pollNotifications() {
+      if (!this.user || !this.user.notifications) return;
+      try {
+        const data = await API.get('/api/notifications');
+        const unseen = data.unseen || 0;
+        if (this.notifySeen !== null && unseen > this.notifySeen) {
+          this.toast(`Du hast ${unseen - this.notifySeen} neue Benachrichtigung(en).`, 'info');
+        }
+        this.notifySeen = unseen;
+        this.renderNotifyBadge(unseen);
+      } catch (e) { /* Polling darf nie stören */ }
+    },
+
+    renderNotifyBadge(n) {
+      const b = document.getElementById('notify-badge');
+      if (!b) return;
+      b.textContent = n > 99 ? '99+' : String(n);
+      b.classList.toggle('hidden', n <= 0);
+    },
+
+    async toggleNotifications() {
+      const panel = document.getElementById('notify-panel');
+      if (!panel) return;
+      if (!panel.classList.contains('hidden')) { this.closeNotifications(); return; }
+      panel.classList.remove('hidden');
+      panel.innerHTML = '<div class="empty" style="padding:18px">Lädt …</div>';
+      try {
+        const data = await API.get('/api/notifications');
+        const items = data.notifications || [];
+        panel.innerHTML = `
+          <div class="notify-panel-head"><b>Benachrichtigungen</b>
+            ${items.length ? `<button class="btn btn-ghost btn-xs" id="notify-readall">Alle als gelesen</button>` : ''}
+          </div>
+          ${items.length ? items.map((n) => `
+            <div class="notify-item${n.seen ? '' : ' unseen'}">
+              <div class="n-title">${esc(n.title)} <span class="n-typ">${esc(n.type || '')}</span></div>
+              ${n.body ? `<div class="n-body">${esc(n.body)}</div>` : ''}
+              <div class="n-time">${esc(fmtDateTime(n.created_at))}</div>
+            </div>`).join('') : '<div class="empty" style="padding:18px">Keine Benachrichtigungen.</div>'}
+        `;
+        const readBtn = panel.querySelector('#notify-readall');
+        if (readBtn) {
+          readBtn.addEventListener('click', async () => {
+            try {
+              await API.post('/api/notifications/read', {});
+              this.notifySeen = 0;
+              this.renderNotifyBadge(0);
+              panel.innerHTML = '<div class="empty" style="padding:18px">Alle als gelesen markiert.</div>';
+            } catch (e) { this.toast(e.message, 'error'); }
+          });
+        }
+      } catch (e) {
+        panel.innerHTML = '<div class="empty" style="padding:18px">Fehler: ' + esc(e.message) + '</div>';
+      }
+    },
+
+    closeNotifications() {
+      const panel = document.getElementById('notify-panel');
+      if (panel) panel.classList.add('hidden');
     },
 
     buildNav() {

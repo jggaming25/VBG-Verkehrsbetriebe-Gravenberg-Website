@@ -179,6 +179,33 @@ img { max-width: 100%; }
 }
 .topbar-title { font-family: var(--font-head); font-weight: 700; font-size: 1.05rem; }
 .topbar-spacer { flex: 1; }
+.notify-btn-wrap { position: relative; }
+.notify-badge {
+  position: absolute; top: 0; right: 0;
+  background: var(--danger); color: #fff;
+  font-size: .6rem; font-weight: 800;
+  min-width: 16px; height: 16px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; line-height: 1;
+}
+.notify-panel {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  width: 340px; max-width: calc(100vw - 20px);
+  max-height: 70vh; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow-lg);
+  z-index: 120; padding: 12px; display: grid; gap: 8px;
+}
+.notify-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 6px; }
+.notify-panel-head b { font-size: .9rem; }
+.notify-panel .btn-xs { font-size: .68rem; }
+.notify-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); }
+.notify-item.unseen { border-color: var(--primary); background: var(--primary-soft); }
+.notify-item .n-title { font-weight: 800; font-size: .85rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.notify-item .n-typ { font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); }
+.notify-item .n-body { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
+.notify-item .n-time { font-size: .68rem; color: var(--text-muted); margin-top: 4px; }
+@media (max-width: 520px) { .notify-panel { width: calc(100vw - 20px); } }
 .page { flex: 1; padding: 26px 26px 10px; max-width: 1240px; width: 100%; margin: 0 auto; }
 .footer {
   padding: 22px 26px 30px;
@@ -428,8 +455,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: .88rem; backgro
 }
 .type-bus { color: var(--primary); }
 @media (max-width: 900px) {
-  .plan-row { grid-template-columns: 100px 1fr; }
-  .plan-time { grid-column: 1; }
+  .plan-row { grid-template-columns: 110px 1fr; }
+  .plan-code { grid-column: 1; }
+  .plan-time { grid-column: 2; text-align: right; }
   .plan-main, .plan-assign { grid-column: 1 / -1; }
 }
 
